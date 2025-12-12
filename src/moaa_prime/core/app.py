@@ -9,10 +9,10 @@ from moaa_prime.swarm import SwarmManager
 
 class MoAAPrime:
     """
-    Phase 1: packaging + smoke.
-    Phase 2: instantiate agents + route prompts.
-    Phase 3: oracle scoring (run_once includes oracle verdict).
-    Phase 4: swarm manager (run_swarm).
+    Phase 1: packaging + smoke
+    Phase 2: instantiate agents + route prompts
+    Phase 3: oracle wired
+    Phase 4: swarm wired (top-k -> oracle score -> best)
     """
 
     def __init__(self) -> None:
@@ -21,7 +21,7 @@ class MoAAPrime:
 
         self.router = MetaRouter([self.math, self.code])
         self.oracle = OracleVerifier()
-        self.swarm = SwarmManager(router=self.router, oracle=self.oracle)
+        self.swarm = SwarmManager(router=self.router, oracle=self.oracle, k=2)
 
     def hello(self) -> str:
         return "moaa-prime says hello"
@@ -29,8 +29,6 @@ class MoAAPrime:
     def run_once(self, prompt: str) -> dict:
         agent, decision = self.router.route(prompt)
         result = agent.handle(prompt)
-        verdict = self.oracle.score(prompt, result.text)
-
         return {
             "prompt": prompt,
             "decision": {
@@ -42,10 +40,6 @@ class MoAAPrime:
                 "agent": result.agent_name,
                 "text": result.text,
                 "meta": result.meta or {},
-            },
-            "oracle": {
-                "score": verdict.score,
-                "reason": verdict.reason,
             },
         }
 
