@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moaa-prime"
+version = "0.0.1"
+description = "MoAA-Prime: Mixture of Adaptive Agents (prototype)"
+readme = "MASTER_HANDOFF.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch",
+  "transformers",
+  "accelerate",
+  "pyyaml",
+  "rich",
+  "sympy",
+  "pytest",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

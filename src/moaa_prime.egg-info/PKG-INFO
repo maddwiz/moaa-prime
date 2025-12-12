@@ -1,0 +1,35 @@
+Metadata-Version: 2.4
+Name: moaa-prime
+Version: 0.0.1
+Summary: MoAA-Prime: Mixture of Adaptive Agents (prototype)
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: torch
+Requires-Dist: transformers
+Requires-Dist: accelerate
+Requires-Dist: pyyaml
+Requires-Dist: rich
+Requires-Dist: sympy
+Requires-Dist: pytest
+
+# MoAA-Prime — MASTER HANDOFF
+
+## What this repo is
+MoAA-Prime is a modular multi-agent system (MoE → MoAA) with:
+- Agents + contracts
+- Router
+- Oracle verification
+- Swarm deliberation + fusion
+- SGM (shared geometric manifold)
+- SFC (stability / budget guardrails)
+- Duality (Architect/Oracle brain halves)
+- Memory: MRE → E-MRE (AEDMC + SH-COS + GFO) integrated later
+
+## Current phase
+Phase 1: skeleton + packaging + "hello world" app + smoke tests.
+
+## How to run (once Phase 1 is done)
+- Activate venv: source .venv/bin/activate
+- Install package: pip install -e .
+- Run smoke: pytest -q
+- Run CLI: python -m moaa_prime.cli.main hello

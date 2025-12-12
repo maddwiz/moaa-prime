@@ -1,0 +1,15 @@
+MASTER_HANDOFF.md
+README.md
+pyproject.toml
+src/moaa_prime/__init__.py
+src/moaa_prime.egg-info/PKG-INFO
+src/moaa_prime.egg-info/SOURCES.txt
+src/moaa_prime.egg-info/dependency_links.txt
+src/moaa_prime.egg-info/requires.txt
+src/moaa_prime.egg-info/top_level.txt
+src/moaa_prime/cli/__init__.py
+src/moaa_prime/cli/main.py
+src/moaa_prime/core/__init__.py
+src/moaa_prime/core/app.py
+tests/test_imports.py
+tests/test_phase1_smoke.py
