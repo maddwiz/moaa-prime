@@ -33,3 +33,6 @@ build/
 data/
 models/
 checkpoints/
+
+# Generated demo outputs
+reports/

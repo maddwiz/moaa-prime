@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from moaa_prime.llm import LLMClient, StubLLMClient
+from moaa_prime.llm import LLMClient, make_llm_from_env
 
 
 @dataclass
@@ -35,45 +35,38 @@ class BaseAgent:
     ) -> None:
         self.contract = contract
         self.bank = bank
-        self.llm = llm or StubLLMClient()
+        self.llm = llm or make_llm_from_env()
         self.system_prompt = system_prompt
 
     # -----------------------------
     # Memory helpers (best-effort)
     # -----------------------------
     def _bank_write(self, *, task_id: str, prompt: str, text: str) -> dict[str, Any]:
-        meta: dict[str, Any] = {
-            "task_id": task_id,
-            "wrote": False,
-            "method": None,
-        }
+        meta: dict[str, Any] = {"task_id": task_id, "wrote": False, "method": None}
 
         if self.bank is None:
             return meta
 
-        payload = {
-            "task_id": task_id,
-            "agent": self.contract.name,
-            "prompt": prompt,
-            "text": text,
-        }
+        payload = {"task_id": task_id, "agent": self.contract.name, "prompt": prompt, "text": text}
 
-        # Try a few common APIs (we keep this flexible so we don't break your bank design).
         try:
-            if hasattr(self.bank, "write"):
-                self.bank.write(payload)  # type: ignore[attr-defined]
-                meta["wrote"] = True
-                meta["method"] = "write(payload)"
-                return meta
+            self.bank.write(payload)
+            meta.update({"wrote": True, "method": "write(payload)"})
+            return meta
         except Exception:
             pass
 
         try:
-            if hasattr(self.bank, "append"):
-                self.bank.append(**payload)  # type: ignore[attr-defined]
-                meta["wrote"] = True
-                meta["method"] = "append(**payload)"
-                return meta
+            self.bank.add(payload)
+            meta.update({"wrote": True, "method": "add(payload)"})
+            return meta
+        except Exception:
+            pass
+
+        try:
+            self.bank.append(payload)
+            meta.update({"wrote": True, "method": "append(payload)"})
+            return meta
         except Exception:
             pass
 
@@ -81,79 +74,51 @@ class BaseAgent:
         return meta
 
     def _bank_recall(self, *, task_id: str, prompt: str) -> dict[str, Any]:
-        """
-        Returns a memory block that ALWAYS includes:
-          - local_hits
-          - bank_hits
-        """
-        mem: dict[str, Any] = {
+        meta: dict[str, Any] = {
             "task_id": task_id,
-            "method": "no-recall-method",
             "local_hits": 0,
-            "bank_hits": 0,
             "local_snippets": [],
+            "bank_hits": 0,
             "bank_snippets": [],
+            "method": None,
         }
 
         if self.bank is None:
-            return mem
+            meta["method"] = "no-bank"
+            return meta
 
-        # Try common recall/query/search APIs
         try:
-            if hasattr(self.bank, "recall"):
-                out = self.bank.recall(task_id=task_id, query=prompt, k=5)  # type: ignore[attr-defined]
-                mem["method"] = "recall(task_id,query,k)"
-                if isinstance(out, dict):
-                    # allow bank to return its own shape, but keep required keys
-                    bank_snips = out.get("snippets", out.get("items", out.get("results", [])))
-                    mem["bank_snippets"] = bank_snips if isinstance(bank_snips, list) else [bank_snips]
-                    mem["bank_hits"] = len(mem["bank_snippets"])
-                    # if bank reports local lane hits, accept it
-                    if "local_hits" in out:
-                        mem["local_hits"] = int(out["local_hits"])
-                    return mem
-
-                if isinstance(out, list):
-                    mem["bank_snippets"] = out
-                    mem["bank_hits"] = len(out)
-                    return mem
+            out = self.bank.recall(task_id=task_id, query=prompt)
+            meta["method"] = "recall(task_id, query)"
+            if isinstance(out, dict):
+                # Try common keys
+                snippets = out.get("snippets") or out.get("items") or []
+                meta["bank_snippets"] = list(snippets)
+                meta["bank_hits"] = len(meta["bank_snippets"])
+            elif isinstance(out, list):
+                meta["bank_snippets"] = out
+                meta["bank_hits"] = len(out)
+            return meta
         except Exception:
             pass
 
         try:
-            if hasattr(self.bank, "search"):
-                out = self.bank.search(task_id=task_id, query=prompt, k=5)  # type: ignore[attr-defined]
-                mem["method"] = "search(task_id,query,k)"
-                if isinstance(out, list):
-                    mem["bank_snippets"] = out
-                    mem["bank_hits"] = len(out)
-                return mem
+            out = self.bank.search(task_id=task_id, query=prompt)
+            meta["method"] = "search(task_id, query)"
+            if isinstance(out, list):
+                meta["bank_snippets"] = out
+                meta["bank_hits"] = len(out)
+            return meta
         except Exception:
             pass
 
-        try:
-            if hasattr(self.bank, "query"):
-                out = self.bank.query(task_id=task_id, query=prompt, k=5)  # type: ignore[attr-defined]
-                mem["method"] = "query(task_id,query,k)"
-                if isinstance(out, list):
-                    mem["bank_snippets"] = out
-                    mem["bank_hits"] = len(out)
-                return mem
-        except Exception:
-            pass
+        meta["method"] = "no-recall-method"
+        return meta
 
-        return mem
-
-    # -----------------------------
-    # Main handler
-    # -----------------------------
     def handle(self, prompt: str, task_id: str = "default") -> AgentResult:
         response = self.llm.generate(prompt, system=self.system_prompt)
 
-        # write
         write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=response.text)
-
-        # recall (always returns required keys)
         recall_meta = self._bank_recall(task_id=task_id, prompt=prompt)
 
         return AgentResult(
@@ -162,8 +127,13 @@ class BaseAgent:
             meta={
                 "model": response.model,
                 "memory": {
-                    **recall_meta,
+                    "local_hits": recall_meta["local_hits"],
+                    "local_snippets": recall_meta["local_snippets"],
+                    "bank_hits": recall_meta["bank_hits"],
+                    "bank_snippets": recall_meta["bank_snippets"],
                     "write": write_meta,
+                    "method": recall_meta["method"],
+                    "task_id": task_id,
                 },
             },
         )
