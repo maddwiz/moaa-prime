@@ -1,38 +1,38 @@
-# MASTER HANDOFF — moaa-prime
+# MASTER_HANDOFF — MoAA-Prime (Living Continuity Doc)
 
 ## What this repo is
-MoAA-Prime is a minimal, test-driven scaffold for a Mixture of Adaptive Agents system.
-It starts tiny and grows by phases without breaking interfaces.
+MoAA-Prime is a Mixture of Adaptive Agents system (agents + router + oracle + swarms + memory).
+Goal: build a verifiable, adaptive swarm architecture that can later scale toward MoAA-Prime features
+(SGM/SFC/Seeker/GCEL/Duality + E-MRE memory).
 
-## Current phase status
-✅ Phase 1 complete (as of 2025-12-12)
+## Current status (as of now)
+- Phases complete: 1, 2, 3, 4, 5
+- Tests: `pytest -q` -> **7 passed**
+- Phase 5 memory behavior:
+  - Each agent can write to memory using prompts like "Remember: ..."
+  - Each agent can read memory on "What was the answer?" style prompts
+  - Memory meta schema includes: local_hits, bank_hits, global_hits, items
 
-## What works right now
-- `MoAAPrime.run_once(prompt)`:
-  - routes prompt to one agent (MathAgent/CodeAgent)
-  - returns decision + agent result + oracle score
-- `MoAAPrime.run_swarm(prompt)`:
-  - gets top-k candidate agents
-  - runs each agent
-  - oracle verifies each answer (via `verify`)
-  - returns best + candidates list
+## How to run
+### Run tests
+pytest -q
 
-## Key contracts we will NOT break
-- Agent interface: `handle(prompt) -> AgentResult`
-- Router interface:
-  - `route(prompt) -> (agent, RouterDecision)`
-  - `top_k(prompt, k) -> list[(agent, RouterDecision)]`
-- Oracle interface:
-  - `score(prompt, answer) -> OracleVerdict`
-  - `verify(prompt, answer, agent_name=None) -> OracleVerdict`
-- Swarm interface:
-  - `run(prompt) -> dict(best=..., candidates=...)`
+### Run a prompt once (CLI)
+python -m moaa_prime "Remember: the answer is 42"
+python -m moaa_prime "What was the answer?"
 
-## Next phase plan (Phase 2)
-- Expand routing logic beyond stub scoring
-- Add prompt embedding + contract bidding (still deterministic)
-- Keep tests green, add new tests for Phase 2
+## Key files
+- src/moaa_prime/core/app.py
+- src/moaa_prime/agents/base.py
+- src/moaa_prime/router/meta_router.py
+- src/moaa_prime/swarm/manager.py
+- src/moaa_prime/oracle/verifier.py
+- src/moaa_prime/memory/*
 
-## MRE note (requested by Desmond)
-Yes: MoAA agents will use the upgraded MRE (E-MRE: AEDMC + SH-COS + GFO + curiosity hook).
-We will integrate it AFTER Phase 2 routing is stable, so memory doesn’t mask routing bugs.
+## Next phase (Phase 6)
+Upgrade Phase 5 “memory v1” into E-MRE v1:
+- AEDMC: adaptive Markov order (k=1..5) driven by entropy/perplexity
+- SH-COS: multi-level COS (episodic/mid/semantic)
+- GFO: forgetting oracle (manifold/anchor guided pruning)
+- Integrate global ReasoningBank queries into routing + Seeker triggers
+
