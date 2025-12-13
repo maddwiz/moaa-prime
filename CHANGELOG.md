@@ -1,23 +1,17 @@
 # CHANGELOG — MoAA-Prime
 
-## Unreleased
+Keep this short and factual. Update at the end of each phase.
 
-## Phase 5 — Memory v1 (DONE)
-- Added ReasoningBank memory wiring into app + agents.
-- Added per-agent lane writes and reads keyed by task_id.
-- Added global/bank recall fields to satisfy Phase 5 contract:
-  - local_hits, bank_hits, global_hits, items
-- All tests passing: pytest (7 passed)
+## Phase 6 — E-MRE v1 (DONE)
+- Added E-MRE lane memory (EpisodicLane) with:
+  - AEDMC-lite Markov order selection (entropy -> k)
+  - Grok riff: curiosity bump (+1 order when high entropy + novel)
+  - SH-COS (multi-level carry-over summaries) producing `global_text`
+  - GFO pruning to keep lanes bounded
+- Added/updated ReasoningBank to support:
+  - per-agent lanes + global store
+  - backward-compatible `write(...)` API
+  - lane recall with kl_like signal
+- Updated BaseAgent memory handling while preserving Phase 5 behavior
+- Tests passing; pushed to GitHub
 
-## Phase 4 — Swarm (DONE)
-- SwarmManager added and wired into app/cli.
-- Debate rounds + top_k routing (as implemented).
-
-## Phase 3 — Oracle (DONE)
-- OracleVerifier integrated so run_once includes oracle field/metadata.
-
-## Phase 2 — Routing (DONE)
-- Contracts, BaseAgent, MathAgent, CodeAgent, MetaRouter.
-
-## Phase 1 — Packaging (DONE)
-- src layout + import smoke tests + CLI entry.
