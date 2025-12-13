@@ -1,96 +1,72 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Optional, Any
+from dataclasses import dataclass, field
+from typing import List, Optional
+
+from .types import MemoryItem, RecallResult
+from .emre import (
+    build_sh_cos,
+    curiosity_bump_order,
+    entropy_proxy,
+    gfo_keep_mask,
+)
 
 
-def _tok(s: str) -> List[str]:
-    return [t.strip().lower() for t in s.replace("\n", " ").split() if t.strip()]
-
-
-@dataclass(frozen=True)
-class Episode:
-    agent_name: str
-    task_id: str
-    text: str
-    meta: dict | None = None
-
-
+@dataclass
 class EpisodicLane:
     """
-    Per-agent, per-task episodic storage.
-
-    Phase 5 baseline:
-      - store Episode objects
-      - retrieve by token overlap
-      - filter by agent_name + task_id
-
-    IMPORTANT:
-      BaseAgent calls memory.add(agent_name=..., task_id=..., prompt=..., text=..., meta=...)
-      so add() supports BOTH:
-        (1) add(Episode(...))
-        (2) add(agent_name=..., task_id=..., prompt=..., text=..., meta=...)
+    Phase 6: E-MRE v1 lane.
+    Stores MemoryItems and uses:
+      - AEDMC-lite: adaptive k based on entropy proxy
+      - SH-COS: multi-level summary injected into recall context
+      - GFO: anchor-guided pruning to prevent unbounded growth
     """
+    name: str
+    items: List[MemoryItem] = field(default_factory=list)
 
-    def __init__(self, max_items: int = 2000, lane_name: Optional[str] = None) -> None:
-        self.max_items = int(max_items)
-        self.lane_name = lane_name or ""
-        self._items: List[Episode] = []
+    # working set (kept raw) + retention knobs
+    working_max: int = 64
+    keep_top_frac: float = 0.85
+    min_keep: int = 16
 
-    def add(
-        self,
-        episode: Episode | None = None,
-        *,
-        agent_name: str | None = None,
-        task_id: str | None = None,
-        prompt: str | None = None,
-        text: str | None = None,
-        meta: dict | None = None,
-        **extra: Any,
-    ) -> None:
-        # Mode 1: explicit Episode
-        if episode is not None:
-            if any(v is not None for v in (agent_name, task_id, prompt, text, meta)) or extra:
-                raise TypeError("EpisodicLane.add(): pass either episode=Episode(...) OR keyword fields, not both.")
-            e = episode
-        else:
-            # Mode 2: keyword fields (what BaseAgent uses)
-            if extra:
-                raise TypeError(f"EpisodicLane.add(): unexpected keyword(s): {sorted(extra.keys())}")
-            if agent_name is None or task_id is None or text is None:
-                raise TypeError("EpisodicLane.add(): agent_name, task_id, and text are required when not passing episode=...")
+    def append(self, item: MemoryItem) -> None:
+        self.items.append(item)
+        # GFO prune when we grow too big
+        if len(self.items) > self.working_max:
+            anchor = f"{item.task_id}:{self.name}"
+            segs = [it.text for it in self.items]
+            mask = gfo_keep_mask(
+                segs,
+                task_anchor=anchor,
+                keep_top_frac=self.keep_top_frac,
+                min_keep=self.min_keep,
+            )
+            self.items = [it for it, keep in zip(self.items, mask) if keep]
 
-            # Put prompt into stored text so retrieval can match on it too.
-            p = prompt or ""
-            combined = f"prompt: {p}\ntext: {text}".strip()
-
-            m = dict(meta or {})
-            if prompt is not None:
-                m.setdefault("prompt", prompt)
-
-            e = Episode(agent_name=agent_name, task_id=task_id, text=combined, meta=m or None)
-
-        self._items.append(e)
-        overflow = len(self._items) - self.max_items
-        if overflow > 0:
-            del self._items[:overflow]
-
-    def retrieve(self, prompt: str, agent_name: str, task_id: str, top_k: int = 3) -> List[Episode]:
+    def recall(self, query: str, task_id: str, kl_like: float = 0.0) -> RecallResult:
         """
-        Super simple retrieval: token overlap score.
-        Filters by agent_name + task_id.
+        Returns:
+          - items: selected memory items (local)
+          - global_hits: SH-COS text (as a string) so app can surface it
         """
-        q = set(_tok(prompt))
-        if not q:
-            return []
+        # Filter to task_id first (simple v1)
+        candidates = [it for it in self.items if it.task_id == task_id]
+        if not candidates:
+            return RecallResult(local_hits=0, bank_hits=0, global_hits=0, items=[], global_text="")
 
-        candidates = [e for e in self._items if e.agent_name == agent_name and e.task_id == task_id]
-        scored = []
-        for e in candidates:
-            t = set(_tok(e.text))
-            score = len(q.intersection(t))
-            if score > 0:
-                scored.append((score, e))
+        # AEDMC-lite: pick k from entropy, with curiosity bump
+        ent = entropy_proxy(query)
+        k = curiosity_bump_order(entropy=ent, kl_like=kl_like)
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [e for _, e in scored[: max(1, int(top_k))]]
+        # Keep last k items (Markov-ish)
+        chosen = candidates[-k:]
+
+        sh = build_sh_cos([it.text for it in chosen])
+
+        return RecallResult(
+            local_hits=len(chosen),
+            bank_hits=0,
+            global_hits=1,
+            items=chosen,
+            global_text=sh.as_text(),
+        )

@@ -1,26 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 
-@dataclass(frozen=True)
-class MemoryWrite:
-    """A single event we want to remember."""
-    agent_name: str
-    lane: str
-    text: str
-    task_id: str = "default"
-    score: float = 0.0  # optional importance/utility
-    meta: Optional[dict[str, Any]] = None
-
-
-@dataclass(frozen=True)
-class MemoryHit:
-    """A retrieved memory item."""
-    lane: str
-    text: str
-    score: float
-    source: str  # "local" or "bank"
-    agent_name: str
+@dataclass
+class MemoryItem:
     task_id: str
+    text: str
+    meta: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class RecallResult:
+    local_hits: int
+    bank_hits: int
+    global_hits: int
+    items: List[MemoryItem]
+    global_text: str = ""
