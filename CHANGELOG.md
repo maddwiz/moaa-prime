@@ -1,17 +1,50 @@
 # CHANGELOG — MoAA-Prime
 
-Keep this short and factual. Update at the end of each phase.
+---
 
-## Phase 6 — E-MRE v1 (DONE)
-- Added E-MRE lane memory (EpisodicLane) with:
-  - AEDMC-lite Markov order selection (entropy -> k)
-  - Grok riff: curiosity bump (+1 order when high entropy + novel)
-  - SH-COS (multi-level carry-over summaries) producing `global_text`
-  - GFO pruning to keep lanes bounded
-- Added/updated ReasoningBank to support:
-  - per-agent lanes + global store
-  - backward-compatible `write(...)` API
-  - lane recall with kl_like signal
-- Updated BaseAgent memory handling while preserving Phase 5 behavior
-- Tests passing; pushed to GitHub
+## Phase 1
+- Repo initialized
+- MoAAPrime app
+- CLI smoke
+- Import tests
+
+## Phase 2
+- Agents + contracts
+- MetaRouter
+- Routing tests
+
+## Phase 3
+- OracleVerifier
+- Oracle-aware routing
+
+## Phase 4
+- SwarmManager
+- Multi-agent deliberation
+- Swarm CLI
+
+## Phase 5
+- Per-agent memory lanes
+- Global ReasoningBank
+- COS + entropy depth
+
+## Phase 6
+- E-MRE v1:
+  - AEDMC
+  - SH-COS
+  - GFO
+  - Curiosity bump
+
+## Phase 7
+- SharedGeometricManifold
+- EnergyFusion
+
+## Phase 8
+- Fusion integrated into swarm loop
+
+## Phase 9
+- StabilityFieldController
+- StableSwarmRunner
+- SwarmManager supports router OR agent list
+- Phase 9 CLI command
+- All tests passing
 

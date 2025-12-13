@@ -1,40 +1,91 @@
 # FILEMAP — MoAA-Prime
+Canonical repo map. Update ONLY after phase completion.
 
-This file maps the repo. Update at the end of each phase.
+---
 
 ## Root
-- MASTER_HANDOFF.md  -> living handoff / continuity (update after each phase)
-- FILEMAP.md         -> map of files (this file)
-- CHANGELOG.md       -> log of changes per phase
-- pyproject.toml     -> packaging (src layout)
-- src/moaa_prime/... -> library code
-- tests/...          -> tests
+- MASTER_HANDOFF.md
+- FILEMAP.md
+- CHANGELOG.md
+- pyproject.toml
+- src/
+- tests/
 
-## Core entrypoints
-- src/moaa_prime/core/app.py     -> main app object (MoAAPrime)
-- src/moaa_prime/cli/__main__.py -> CLI entry (python -m moaa_prime "prompt")
+---
 
-## Phase 1 scope (DONE)
-- packaging + import smoke tests
+## Core
+- src/moaa_prime/core/app.py        → MoAAPrime entry object
 
-## Phase 2 scope (DONE)
-- contracts + base agents + meta-router
+---
 
-## Phase 3 scope (DONE)
-- oracle verifier + wiring
+## CLI
+- src/moaa_prime/cli/__main__.py
+- src/moaa_prime/cli/phase9_stable_cmd.py
 
-## Phase 4 scope (DONE)
-- swarm manager + CLI command + tests
+---
 
-## Phase 5 scope (DONE)
-- memory v1: per-agent memory lanes + global ReasoningBank
+## Agents
+- src/moaa_prime/agents/base.py
+- src/moaa_prime/agents/math_agent.py
+- src/moaa_prime/agents/code_agent.py
 
-## Phase 6 scope (DONE)
-- src/moaa_prime/memory/episodic_lane.py     -> E-MRE lane (AEDMC + curiosity bump + SH-COS + GFO)
-- src/moaa_prime/memory/reasoning_bank.py    -> global bank + per-lane recall (kl_like + SH-COS text)
-- src/moaa_prime/agents/base.py              -> preserved Phase 5 memory contract, enriched for Phase 6
-- tests/*                                    -> still green
+---
 
-## Next phase (NOW)
-- Phase 7: SGM (Shared Geometric Manifold) + Energy Fusion v0 (minimal + testable)
+## Contracts
+- src/moaa_prime/contracts/contract.py
+
+---
+
+## Routing
+- src/moaa_prime/router/meta_router.py
+
+---
+
+## Oracle
+- src/moaa_prime/oracle/verifier.py
+
+---
+
+## Swarm
+- src/moaa_prime/swarm/manager.py
+- src/moaa_prime/swarm/stable_runner.py
+
+---
+
+## Memory
+- src/moaa_prime/memory/agent_lane.py
+- src/moaa_prime/memory/reasoning_bank.py
+- src/moaa_prime/memory/cos.py
+
+---
+
+## E-MRE
+- src/moaa_prime/mre/aedmc.py
+- src/moaa_prime/mre/sh_cos.py
+- src/moaa_prime/mre/gfo.py
+
+---
+
+## Fusion / Geometry
+- src/moaa_prime/sgm.py
+- src/moaa_prime/fusion.py
+
+---
+
+## Stability
+- src/moaa_prime/sfc.py
+
+---
+
+## Tests
+- tests/test_phase1_smoke.py
+- tests/test_phase2_router.py
+- tests/test_phase3_oracle.py
+- tests/test_phase4_swarm.py
+- tests/test_phase5_memory.py
+- tests/test_phase6_emre.py
+- tests/test_phase7_sgm.py
+- tests/test_phase8_fusion.py
+- tests/test_phase9_swarm_sfc_gate.py
+- tests/test_phase9_cli_stable_cmd.py
 
