@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "id": "math_simple",
+      "prompt": "Solve: 2x + 3 = 7. Return only x.",
+      "mode": "once"
+    },
+    {
+      "id": "code_simple",
+      "prompt": "Write a Python function add(a, b) that returns their sum.",
+      "mode": "once"
+    },
+    {
+      "id": "swarm_reasoning",
+      "prompt": "Explain why 1/0 is undefined, then give a safe Python example.",
+      "mode": "swarm"
+    }
+  ]
+}
