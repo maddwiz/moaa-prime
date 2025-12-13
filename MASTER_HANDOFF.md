@@ -1,135 +1,72 @@
-# MASTER HANDOFF — MoAA-Prime
-Status: AUTHORITATIVE CONTINUITY DOCUMENT  
-Update Rule: MUST be fully rewritten at the end of every phase
+# MASTER_HANDOFF — MoAA-Prime (living continuity doc)
+
+Owner: Desmond
+Local: DGX Spark
+Rule: Always full-file replacements (no partial edits).
+
+## What MoAA-Prime is
+MoAA-Prime is a “Mixture of Adaptive Agents” system:
+
+- Agents with contracts (domains/tools/competence)
+- Router chooses agent(s) for prompts/tasks
+- Oracle scores truth/quality
+- Swarm manager runs multi-candidate deliberation and selects best
+- Memory: per-agent lanes + global ReasoningBank
+- E-MRE upgrades: AEDMC + SH-COS + GFO + curiosity bump
+- SGM + Energy Fusion scaffolding
+- SFC stability/budget hooks
+- Dual-brain hooks (Architect / Oracle split)
+- GCEL evolves contracts over time
+- Eval harness produces demo-ready JSON reports
+
+## Current truth snapshot
+- `pytest -q` is passing (latest: 21 passed)
+- `python scripts/eval_run.py` writes: `reports/eval_report.json`
+
+## Continuity files (MUST stay complete)
+- MASTER_HANDOFF.md (this file)
+- FILEMAP.md
+- CHANGELOG.md
 
 ---
 
-## What is MoAA-Prime?
+## Phases (truth status)
 
-MoAA-Prime (Mixture of Adaptive Agents) is an agentic swarm architecture that evolves beyond Mixture-of-Experts by adding:
+### Phase 1 — Packaging + smoke (DONE)
+Packaging + smoke tests.
 
-- Explicit agents (not hidden experts)
-- Contracts + routing
-- Swarm deliberation
-- Oracle-based truth gating
-- Long-horizon memory (E-MRE)
-- Stability control (SFC)
-- Energy-based fusion (SGM)
-- Dual-brain reasoning (Architect / Oracle)
-- Evolutionary mutation (GCEL)
-- Verifiable evaluation
+### Phase 2 — Agents + Contracts + Router (DONE)
+Contracts, BaseAgent, MathAgent/CodeAgent, MetaRouter.
 
-The goal is **resilient, long-horizon, truth-anchored reasoning** — not token prediction.
+### Phase 3 — Oracle (DONE)
+OracleVerifier wired so run_once includes oracle info.
 
----
+### Phase 4 — Swarm (DONE)
+SwarmManager + app.run_swarm returns best + candidates.
 
-## CURRENT TRUTH SNAPSHOT (DO NOT ARGUE THIS)
+### Phase 5 — Memory v1 (DONE)
+Per-agent lanes + global ReasoningBank; task_id continuity.
 
-### ✅ Completed Phases
+### Phase 6 — E-MRE v1 (DONE)
+AEDMC, SH-COS, GFO, curiosity bump integrated into memory approach.
 
-**Phase 1 — Packaging & Smoke**
-- Repo initialized (src layout)
-- MoAAPrime app object
-- CLI smoke command
-- Import + smoke tests
+### Phase 7 — SGM + Energy Fusion v0 (DONE)
+SharedGeometricManifold + EnergyFusion scaffolding and tests.
 
-**Phase 2 — Agents, Contracts, Router**
-- BaseAgent abstraction
-- MathAgent / CodeAgent
-- Contract model (domains, competence, tools)
-- MetaRouter (embedding + competence routing)
-- Routing tests
+### Phase 8 — Consolidation (DONE)
+Compatibility pass so newer hooks don’t break earlier contracts/tests.
 
-**Phase 3 — Oracle**
-- OracleVerifier abstraction
-- Default oracle behavior
-- Oracle wired into routing
-- Oracle tests
+### Phase 9 — SFC (DONE / v0)
+StabilityFieldController + StableSwarmRunner + CLI; SwarmManager supports router OR direct list.
 
-**Phase 4 — Swarm**
-- SwarmManager
-- Multi-agent deliberation
-- Oracle-scored candidate selection
-- Swarm CLI command
-- Swarm tests
+### Phase 10 — Dual-brain (DONE / v0)
+Architect/Oracle split runner scaffolding + tests.
 
-**Phase 5 — Memory v1**
-- Per-agent memory lanes
-- Global ReasoningBank
-- Carry-Over Summaries (COS)
-- Entropy-driven history depth (AEDMC-lite)
-- Retrieval tests
+### Phase 11 — GCEL (DONE)
+Genetic Contract Evolution Loop (elite selection, mutation, crossover) with competence clamping; wired into app.
 
-**Phase 6 — E-MRE v1**
-- Adaptive Entropy-Driven Markov Chains (AEDMC)
-- Superposed Hierarchical COS (SH-COS)
-- Geometric Forgetting Oracle (GFO)
-- Curiosity bump (cross-lane recall on KL divergence)
-- Rot-resistance verified by tests
-
-**Phase 7 — SGM + Energy Fusion**
-- SharedGeometricManifold (hyperbolic embedding)
-- EnergyFusion (consistency + diversity)
-- Fusion-aware swarm selection
-- Non-breaking optional wiring
-
-**Phase 8 — Stable Fusion Integration**
-- Fusion wired into swarm loop
-- Energy tracked in metadata
-- Fusion remains optional & test-safe
-
-**Phase 9 — Stability Field Controller (SFC)**
-- StabilityFieldController
-- StableSwarmRunner
-- Early-stop on instability
-- Budget-aware swarm execution
-- CLI: phase9_stable_cmd
-- SwarmManager now supports:
-  - MetaRouter OR
-  - Direct agent list (for tests + experiments)
-
----
-
-## What We Just Verified
-
-- ALL TESTS PASS (15/15)
-- SwarmManager signature mismatch FIXED
-- Phase 9 CLI executes correctly
-- Repo pushed and pulled cleanly
-- No phantom phases
-- No skipped work
-
----
-
-## NEXT PHASES (NOT STARTED YET)
-
-**Phase 10 — Dual-Brain Reasoning**
-- Architect agent (planning / structure)
-- Oracle-critic agent (truth / challenge)
-- Deliberate tension, not consensus
-- Brain-split wiring inside swarm
-
-**Phase 11 — GCEL (Genetic Contract Evolution Loop)**
-- Contract mutation
-- Fitness via oracle + SFC
-- Specialization over time
-
-**Phase 12 — Evaluation & Demo**
-- GAIA subset
-- WebArena mini
-- Ablations
-- Demo script + video
-
----
-
-## Non-Negotiable Rules Going Forward
-
-1. **Full-file replacements only**
-2. **No partial continuity docs**
-3. **Never rewind phases**
-4. **Never overwrite without explicit instruction**
-5. **5-year-old mode for all terminal steps**
-6. **Tests define truth**
-
-If a future assistant contradicts this file, THIS FILE WINS.
+### Phase 12 — Eval + Demo (DONE)
+EvalRunner executes “once” and “swarm” cases and writes JSON report:
+- Run: `python scripts/eval_run.py`
+- Output: `reports/eval_report.json`
 

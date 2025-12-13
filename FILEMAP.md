@@ -1,91 +1,60 @@
 # FILEMAP — MoAA-Prime
-Canonical repo map. Update ONLY after phase completion.
 
----
+Update this at the end of each phase.
+This maps the repo so a new chat window can re-sync instantly.
 
 ## Root
-- MASTER_HANDOFF.md
-- FILEMAP.md
-- CHANGELOG.md
-- pyproject.toml
-- src/
-- tests/
+- MASTER_HANDOFF.md  -> living handoff / continuity (Phase 1→end)
+- FILEMAP.md         -> repo map (this file)
+- CHANGELOG.md       -> phase-by-phase changes
+- pyproject.toml     -> packaging (src layout)
+- src/moaa_prime/... -> library code
+- tests/...          -> tests
+- scripts/...        -> runnable scripts
+- reports/...        -> generated demo/eval outputs (do not rely on being committed)
 
----
+## Core entrypoints
+- src/moaa_prime/core/app.py       -> main app object (MoAAPrime)
+- src/moaa_prime/cli/__main__.py   -> `python -m moaa_prime "prompt"` entry
 
-## Core
-- src/moaa_prime/core/app.py        → MoAAPrime entry object
-
----
-
-## CLI
-- src/moaa_prime/cli/__main__.py
-- src/moaa_prime/cli/phase9_stable_cmd.py
-
----
-
-## Agents
+## Agents / Contracts / Router (Phase 2)
+- src/moaa_prime/contracts/contract.py
 - src/moaa_prime/agents/base.py
 - src/moaa_prime/agents/math_agent.py
 - src/moaa_prime/agents/code_agent.py
-
----
-
-## Contracts
-- src/moaa_prime/contracts/contract.py
-
----
-
-## Routing
 - src/moaa_prime/router/meta_router.py
 
----
-
-## Oracle
+## Oracle (Phase 3)
 - src/moaa_prime/oracle/verifier.py
+- src/moaa_prime/oracle/__init__.py
 
----
-
-## Swarm
+## Swarm (Phase 4+)
 - src/moaa_prime/swarm/manager.py
-- src/moaa_prime/swarm/stable_runner.py
+- src/moaa_prime/swarm/__init__.py
+- src/moaa_prime/swarm/phase9_stable.py
+- src/moaa_prime/cli/phase9_stable_cmd.py
 
----
-
-## Memory
-- src/moaa_prime/memory/agent_lane.py
+## Memory / E-MRE v1 (Phase 5–6)
 - src/moaa_prime/memory/reasoning_bank.py
-- src/moaa_prime/memory/cos.py
+- src/moaa_prime/memory/*  (AEDMC, SH-COS, GFO, curiosity bump hooks)
 
----
+## SGM + Fusion (Phase 7)
+- src/moaa_prime/sgm/*
+- src/moaa_prime/fusion/*
+- src/moaa_prime/fusion/mode.py
 
-## E-MRE
-- src/moaa_prime/mre/aedmc.py
-- src/moaa_prime/mre/sh_cos.py
-- src/moaa_prime/mre/gfo.py
+## SFC (Phase 9)
+- src/moaa_prime/sfc/*
 
----
+## Duality (Phase 10)
+- src/moaa_prime/brains/*
+- src/moaa_prime/swarm/dual_brain_runner.py
 
-## Fusion / Geometry
-- src/moaa_prime/sgm.py
-- src/moaa_prime/fusion.py
+## GCEL (Phase 11)
+- src/moaa_prime/evolution/gcel.py
 
----
-
-## Stability
-- src/moaa_prime/sfc.py
-
----
-
-## Tests
-- tests/test_phase1_smoke.py
-- tests/test_phase2_router.py
-- tests/test_phase3_oracle.py
-- tests/test_phase4_swarm.py
-- tests/test_phase5_memory.py
-- tests/test_phase6_emre.py
-- tests/test_phase7_sgm.py
-- tests/test_phase8_fusion.py
-- tests/test_phase9_swarm_sfc_gate.py
-- tests/test_phase9_cli_stable_cmd.py
-
+## Eval + Demo (Phase 12)
+- src/moaa_prime/eval/runner.py
+- src/moaa_prime/eval/report.py
+- scripts/eval_run.py
+- reports/eval_report.json (generated artifact)
