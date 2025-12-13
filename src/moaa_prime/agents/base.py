@@ -1,61 +1,115 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from moaa_prime.contracts import Contract
-from moaa_prime.memory import MemoryItem, ReasoningBank
+
+try:
+    from moaa_prime.memory import ReasoningBank
+except Exception:  # pragma: no cover
+    ReasoningBank = None  # type: ignore
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentResult:
     agent_name: str
     text: str
-    meta: Optional[Dict[str, Any]] = None
+    meta: Dict[str, Any] | None = None
 
 
 class BaseAgent:
-    def __init__(self, contract: Contract, bank: ReasoningBank | None = None) -> None:
+    """
+    Base agent with Phase 5 memory schema preserved,
+    while Phase 6 (E-MRE) enriches it (kl_like + SH-COS).
+    """
+
+    def __init__(self, contract: Contract, bank: Optional[ReasoningBank] = None) -> None:
         self.contract = contract
         self.bank = bank
 
     def _is_memory_write(self, p: str) -> bool:
-        return p.startswith("remember:") or p.startswith("save:")
+        return p.startswith("remember:")
 
     def _is_memory_read(self, p: str) -> bool:
-        return p.startswith("recall:") or p.startswith("what did we") or p.startswith("what was")
+        # Match earlier behavior + Phase 5 tests
+        if p.startswith("recall"):
+            return True
+        if p.startswith("remember what"):
+            return True
+        if "what was the answer" in p:
+            return True
+        if ("what was" in p or "what is" in p) and "answer" in p:
+            return True
+        return False
+
+    def _entry_to_dict(self, entry: Any) -> Dict[str, Any]:
+        if isinstance(entry, dict):
+            return entry
+        out: Dict[str, Any] = {}
+        for k in ("lane", "task_id", "content", "text"):
+            if hasattr(entry, k):
+                out[k] = getattr(entry, k)
+        # normalize "content" vs "text"
+        if "content" not in out and "text" in out:
+            out["content"] = out["text"]
+        return out
 
     def handle(self, prompt: str, task_id: str = "default") -> AgentResult:
-        text = f"{self.contract.name} handled: {prompt}"
         meta: Dict[str, Any] = {"phase": "base-handle"}
+        p = (prompt or "").strip()
+        pl = p.lower()
 
-        if self.bank is not None:
-            p = prompt.strip().lower()
+        # If no bank, just echo
+        if self.bank is None:
+            text = f"{self.contract.name} handled: {prompt}"
+            return AgentResult(agent_name=self.contract.name, text=text, meta=meta)
 
-            # WRITE
-            if self._is_memory_write(p):
-                payload = prompt.split(":", 1)[1].strip()
-                self.bank.write(
-                    MemoryItem(
-                        task_id=task_id,
-                        text=payload,
-                        meta={"lane": self.contract.name, "kind": "user_write"},
-                    )
-                )
-                meta["memory"] = {"op": "write", "ok": True, "payload_len": len(payload)}
-                return AgentResult(agent_name=self.contract.name, text="OK, remembered.", meta=meta)
+        # WRITE
+        if self._is_memory_write(pl):
+            payload = p.split(":", 1)[1].strip()
+            self.bank.write(lane=self.contract.name, task_id=task_id, content=payload)
+            meta["memory"] = {
+                "op": "write",
+                "task_id": task_id,
+                "agent": self.contract.name,
+                "text": payload,
+            }
+            return AgentResult(agent_name=self.contract.name, text="OK, remembered.", meta=meta)
 
-            # READ
-            if self._is_memory_read(p):
-                out = self.bank.recall(query=prompt, task_id=task_id, top_k=5)
-                meta["memory"] = {
-                    "op": "recall",
-                    "bank_hits": out.get("bank_hits", 0),
-                    "kl_like": out.get("kl_like", 0.0),
-                }
-                recalled = out.get("global_text", "").strip()
-                if recalled:
-                    return AgentResult(agent_name=self.contract.name, text=recalled, meta=meta)
-                return AgentResult(agent_name=self.contract.name, text="I don't have anything stored for that yet.", meta=meta)
+        # READ
+        if self._is_memory_read(pl):
+            bank_out = self.bank.recall(query=p, task_id=task_id, top_k=5)
+            kl_like = float(bank_out.get("kl_like", 0.0))
 
+            lane_res = self.bank.lane_recall(
+                lane=self.contract.name,
+                query=p,
+                task_id=task_id,
+                kl_like=kl_like,
+            )
+
+            local_items = [self._entry_to_dict(it) for it in lane_res.items]
+            bank_items = [self._entry_to_dict(it) for it in (bank_out.get("items", []) or [])]
+
+            meta["memory"] = {
+                "op": "read",
+                "task_id": task_id,
+                "agent": self.contract.name,
+                # Phase 5 required fields:
+                "local_hits": int(getattr(lane_res, "local_hits", 0)),
+                "bank_hits": int(bank_out.get("bank_hits", 0)),
+                "global_hits": int(getattr(lane_res, "global_hits", 0)),
+                "items": local_items,
+                # Phase 6 enrichments:
+                "bank_items": bank_items,
+                "global_text": str(getattr(lane_res, "global_text", "") or bank_out.get("global_text", "")),
+                "kl_like": kl_like,
+            }
+
+            text = f"{self.contract.name} recall: {len(local_items)} local, {len(bank_items)} bank."
+            return AgentResult(agent_name=self.contract.name, text=text, meta=meta)
+
+        # Default behavior
+        text = f"{self.contract.name} handled: {prompt}"
         return AgentResult(agent_name=self.contract.name, text=text, meta=meta)
