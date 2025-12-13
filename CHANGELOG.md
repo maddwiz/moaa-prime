@@ -1,47 +1,61 @@
 # CHANGELOG — MoAA-Prime
 
-## Phase 1 — Packaging + smoke
-- Added src/ layout, minimal app, import smoke tests.
+All notable changes to this repo, by phase.
 
-## Phase 2 — Agents + contracts + router
+## Phase 1 — Packaging + smoke
+- Added src/ layout, minimal app entry, import smoke tests.
+
+## Phase 2 — Agents + Contracts + Router
 - Added Contract, BaseAgent, MathAgent, CodeAgent.
-- Added MetaRouter and routing decision metadata.
-- Added tests covering routing.
+- Added MetaRouter with decision metadata.
+- Added routing tests.
 
 ## Phase 3 — Oracle
-- Added verifier (math/code/general stubs) and wired into app.
+- Added oracle verifier scaffolding + app wiring.
 - Added oracle tests.
 
 ## Phase 4 — Swarm
-- Added SwarmManager with debate loop.
-- Added CLI swarm entry (if present) + tests.
+- Added SwarmManager and swarm path in app.
+- Added swarm tests.
 
 ## Phase 5 — Memory v1 (per-agent + global ReasoningBank)
-- Added ReasoningBank integration.
-- Ensured BaseAgent result.meta["memory"] includes:
+- Wired ReasoningBank into app/agents (as implemented).
+- Ensured BaseAgent returns memory meta required by tests:
   - local_hits
   - bank_hits
-- Verified: pytest passes (21 passed) after BaseAgent memory meta fixes.
+- Tests green.
 
-## Phase 6 — E-MRE v1 (AEDMC + SH-COS + GFO + curiosity bump)
-- Implemented E-MRE primitives and wired through memory layer.
+## Phase 6 — E-MRE v1
+- Added E-MRE scaffolding/hooks in memory layer:
+  - AEDMC
+  - SH-COS
+  - GFO
+  - curiosity bump hooks
 
 ## Phase 7 — SGM + Energy Fusion v0
-- Added geometric manifold state + fusion scoring.
+- Added SharedGeometricManifold scaffolding.
+- Added fusion scaffolding (v0).
 
-## Phase 8 — SFC
-- Added stability budget + pruning triggers.
+## Phase 8 — Consolidation
+- Stabilized interfaces while growing features; tests maintained.
 
-## Phase 9 — Dual-brain
-- Added Architect/Oracle brain split + gate.
+## Phase 9 — SFC (Stability Field Controller)
+- Added stability/budget coupling hooks (v0).
 
-## Phase 10 — GCEL
-- Added genetic contract mutation / specialization logic.
-- TODO: cleanup pass in Phase 12C (naming, docs, safety rails).
+## Phase 10 — Dual-brain (Architect / Oracle split)
+- Added dual-brain runner scaffolding + tests.
 
-## Phase 11 — Eval scaffolding
-- Added basic eval runner hooks + metrics stubs.
+## Phase 11 — GCEL (Genetic Contract Evolution Loop)
+- Added GCEL evolve() with elite selection, mutation, crossover.
+- Enforced competence clamping to bounds.
 
-## Phase 12 (current) — Demo + benchmarks polish
-- Next: add scripts/ demo runner + benchmarks, then wire optional real models behind env var.
+## Phase 12 — Hard-polish demo + benchmarks
+- Added eval runner + JSON report writer.
+- Added demo script that writes a single demo JSON artifact.
+- Added bench script that writes timing JSON.
+- Added optional real model wiring via Ollama:
+  - MOAA_LLM_PROVIDER=ollama
+  - MOAA_OLLAMA_HOST
+  - MOAA_OLLAMA_MODEL
+- reports/ treated as generated output (gitignored).
 
