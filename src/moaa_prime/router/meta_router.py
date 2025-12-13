@@ -1,62 +1,68 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Sequence, Tuple
 
-from moaa_prime.agents.base import BaseAgent
+from moaa_prime.agents.base import AgentResult, BaseAgent
 
 
 @dataclass(frozen=True)
 class RouteDecision:
     agent_name: str
     score: float
-    reason: str
+    reason: str = ""
 
 
 class MetaRouter:
     """
-    Phase 2: keyword/domain router.
-    Phase 4: add top_k() so SwarmManager can ask for multiple candidates.
+    Phase 2 router.
+
+    Contract:
+    - route(prompt) -> (agent, decision)
+    - route_top_k(prompt, k) -> (agents, decisions) sorted best->worst
     """
 
-    def __init__(self, agents: List[BaseAgent]) -> None:
-        self.agents = agents
+    def __init__(self, agents: Sequence[BaseAgent]) -> None:
+        self.agents: List[BaseAgent] = list(agents)
 
-    def _score(self, prompt: str, agent: BaseAgent) -> Tuple[float, str]:
-        p = prompt.lower()
+    def _score(self, agent: BaseAgent, prompt: str) -> float:
+        # v0 deterministic scoring: competence + tiny domain keyword bump
+        score = float(getattr(agent.contract, "competence", 0.5) or 0.5)
+
+        p = (prompt or "").lower()
         domains = [d.lower() for d in (agent.contract.domains or [])]
 
-        # very dumb heuristics (intentional for Phase 2/4)
-        math_hits = any(k in p for k in ["solve", "equation", "integral", "derivative", "math", "algebra", "x +", "x=", "2x"])
-        code_hits = any(k in p for k in ["code", "python", "bug", "stack trace", "function", "class", "import", "pip", "pytest", "exception"])
+        if "math" in domains and ("solve" in p or "equation" in p or "x" in p):
+            score += 0.10
+        if "code" in domains and ("python" in p or "code" in p or "traceback" in p or "error" in p):
+            score += 0.10
 
-        score = 0.0
-        reason = "default"
-
-        if "math" in domains and math_hits:
-            score += 1.3
-            reason = "math-keywords"
-        if "code" in domains and code_hits:
-            score += 1.2
-            reason = "code-keywords"
-
-        # competence is a small nudge
-        score += float(agent.contract.competence) * 0.1
-        return score, reason
-
-    def top_k(self, prompt: str, k: int = 2) -> List[Tuple[BaseAgent, RouteDecision]]:
-        scored: List[Tuple[float, BaseAgent, str]] = []
-        for agent in self.agents:
-            s, r = self._score(prompt, agent)
-            scored.append((s, agent, r))
-
-        scored.sort(key=lambda t: t[0], reverse=True)
-        top = scored[: max(1, k)]
-
-        out: List[Tuple[BaseAgent, RouteDecision]] = []
-        for s, agent, reason in top:
-            out.append((agent, RouteDecision(agent_name=agent.contract.name, score=float(s), reason=reason)))
-        return out
+        if score < 0.0:
+            return 0.0
+        if score > 1.0:
+            return 1.0
+        return score
 
     def route(self, prompt: str) -> Tuple[BaseAgent, RouteDecision]:
-        return self.top_k(prompt, k=1)[0]
+        agents, decisions = self.route_top_k(prompt, k=1)
+        return agents[0], decisions[0]
+
+    def route_top_k(self, prompt: str, k: int = 2) -> Tuple[List[BaseAgent], List[RouteDecision]]:
+        if k <= 0:
+            k = 1
+        k = min(k, len(self.agents))
+
+        scored: List[Tuple[float, BaseAgent]] = []
+        for a in self.agents:
+            scored.append((self._score(a, prompt), a))
+
+        scored.sort(key=lambda t: t[0], reverse=True)
+        top = scored[:k]
+
+        agents: List[BaseAgent] = []
+        decisions: List[RouteDecision] = []
+        for s, a in top:
+            agents.append(a)
+            decisions.append(RouteDecision(agent_name=a.contract.name, score=float(s), reason="router_score"))
+
+        return agents, decisions

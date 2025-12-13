@@ -1,70 +1,73 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List
+from dataclasses import asdict
+from typing import Any, Dict, List, Optional, Tuple
 
-from moaa_prime.oracle import OracleVerifier
-from moaa_prime.router import MetaRouter
+from moaa_prime.router.meta_router import MetaRouter
 
-
-@dataclass
-class SwarmPick:
-    agent: str
-    text: str
-    oracle_score: float
-    oracle_reason: str
+try:
+    from moaa_prime.oracle.verifier import OracleVerifier, OracleVerdict
+except Exception:  # pragma: no cover
+    OracleVerifier = None  # type: ignore
+    OracleVerdict = None  # type: ignore
 
 
 class SwarmManager:
     """
-    Phase 4: minimal swarm:
-    - ask top-k agents for answers
-    - score each answer with Oracle
-    - return the best one + full trace
+    Phase 4: Swarm debate manager.
+
+    Contract:
+    - run(...) returns:
+      {
+        "best": { ... includes "oracle": {"score": float, ...} ... },
+        "candidates": [ ... each includes "oracle" ... ]
+      }
     """
 
-    def __init__(self, router: MetaRouter, oracle: OracleVerifier, k: int = 2) -> None:
+    def __init__(self, router: MetaRouter, oracle: Optional[OracleVerifier] = None) -> None:
         self.router = router
         self.oracle = oracle
-        self.k = k
 
-    def run(self, prompt: str) -> Dict[str, Any]:
-        candidates = self.router.top_k(prompt, k=self.k)
+    def _oracle_block(self, prompt: str, text: str) -> Dict[str, Any]:
+        if self.oracle is None:
+            return {"score": 0.5, "reason": "no oracle", "meta": {}}
 
-        picks: List[SwarmPick] = []
-        for agent, decision in candidates:
-            result = agent.handle(prompt)
+        # Prefer rich verdict if available
+        if hasattr(self.oracle, "verdict"):
+            v = self.oracle.verdict(prompt, text)  # type: ignore[attr-defined]
+            return {
+                "score": float(getattr(v, "score", 0.5)),
+                "reason": getattr(v, "reason", ""),
+                "meta": getattr(v, "meta", {}) or {},
+            }
 
-            o = self.oracle.verify(
-                prompt=prompt,
-                answer=result.text,
-                agent_name=result.agent_name,
-            )
+        # Fallback: score-only
+        return {"score": float(self.oracle.score(prompt, text)), "reason": "", "meta": {}}
 
-            picks.append(
-                SwarmPick(
-                    agent=result.agent_name,
-                    text=result.text,
-                    oracle_score=float(o.score),
-                    oracle_reason=str(o.reason),
-                )
-            )
+    def run(
+        self,
+        prompt: str,
+        task_id: str = "default",
+        rounds: int = 2,
+        top_k: int = 2,
+    ) -> Dict[str, Any]:
+        # pick top_k agents
+        agents, _decision = self.router.route_top_k(prompt, k=top_k)
 
-        best = max(picks, key=lambda p: p.oracle_score)
-
-        return {
-            "prompt": prompt,
-            "candidates": [
+        candidates: List[Dict[str, Any]] = []
+        for agent in agents:
+            result = agent.handle(prompt, task_id=task_id)
+            oracle_block = self._oracle_block(prompt, result.text)
+            candidates.append(
                 {
-                    "agent": p.agent,
-                    "text": p.text,
-                    "oracle": {"score": p.oracle_score, "reason": p.oracle_reason},
+                    "agent": result.agent_name,
+                    "text": result.text,
+                    "meta": result.meta or {},
+                    "oracle": oracle_block,
                 }
-                for p in picks
-            ],
-            "best": {
-                "agent": best.agent,
-                "text": best.text,
-                "oracle": {"score": best.oracle_score, "reason": best.oracle_reason},
-            },
-        }
+            )
+
+        # "best" = max oracle score
+        best = max(candidates, key=lambda c: float(c["oracle"]["score"]))
+
+        return {"best": best, "candidates": candidates}

@@ -1,23 +1,35 @@
 # Python
 __pycache__/
-*.pyc
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+*.py[cod]
+*.pyo
+*.pyd
 
-# Virtual env
+# Virtual envs
 .venv/
 venv/
+env/
+
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # OS/editor
 .DS_Store
 .vscode/
 .idea/
 
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
 # Logs
 *.log
 
-# Local artifacts
-artifacts/
-outputs/
+# If you later store local datasets/models here, keep them out of git:
 data/
+models/
+checkpoints/

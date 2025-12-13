@@ -1,47 +1,49 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Dict
 
 
 @dataclass(frozen=True)
 class OracleVerdict:
     score: float
-    reason: str
+    reason: str = ""
+    meta: Dict[str, Any] | None = None
 
 
 class OracleVerifier:
     """
-    Phase 3 stub oracle.
+    Phase 3 Oracle.
 
-    Contract:
-      - score(prompt, answer) -> OracleVerdict(score, reason)
-      - verify(prompt, answer, agent_name=None) -> OracleVerdict(score, reason)
-
-    Later phases can replace this with:
-      - SymPy / execution sandbox / classifier heads, etc.
+    IMPORTANT CONTRACT:
+    - verdict(prompt, answer) returns OracleVerdict (rich object)
+    - score(prompt, answer) returns float in [0, 1] (simple numeric)
     """
 
-    def score(self, prompt: str, answer: str) -> OracleVerdict:
-        # Keep it deterministic + aligned with existing stub behavior.
+    def verdict(self, prompt: str, answer: str) -> OracleVerdict:
+        # v0 heuristic oracle (simple + deterministic)
+        p = (prompt or "").lower()
         a = (answer or "").lower()
 
-        if a.startswith("[math-agent stub]"):
-            return OracleVerdict(score=0.7, reason="math-stub")
+        # Tiny heuristics so tests + demos have stable behavior
+        if "solve" in p and ("x=" in a or "x =" in a):
+            return OracleVerdict(score=0.9, reason="contains x= form")
 
-        if a.startswith("[code-agent stub]"):
-            return OracleVerdict(score=0.5, reason="code-stub")
+        if "python" in p or "code" in p:
+            # if they mention a likely code term, give medium-high
+            if "def " in a or "traceback" in a or "error" in a:
+                return OracleVerdict(score=0.8, reason="looks like code-debug response")
+            return OracleVerdict(score=0.6, reason="code-related response")
 
-        # Generic fallback
-        p = (prompt or "").lower()
-        if "solve" in p or "equation" in p:
-            return OracleVerdict(score=0.6, reason="generic-math-ish")
-        if "python" in p or "bug" in p or "function" in p:
-            return OracleVerdict(score=0.6, reason="generic-code-ish")
+        # Default: neutral
+        return OracleVerdict(score=0.5, reason="default oracle")
 
-        return OracleVerdict(score=0.5, reason="generic-stub")
-
-    def verify(self, prompt: str, answer: str, agent_name: str | None = None) -> OracleVerdict:
-        # SwarmManager calls verify(); for now it’s just a wrapper.
-        # agent_name is accepted for future richer reasoning, but unused in the stub.
-        _ = agent_name
-        return self.score(prompt=prompt, answer=answer)
+    def score(self, prompt: str, answer: str) -> float:
+        v = self.verdict(prompt, answer)
+        # Force [0,1] and float
+        s = float(v.score)
+        if s < 0.0:
+            return 0.0
+        if s > 1.0:
+            return 1.0
+        return s
