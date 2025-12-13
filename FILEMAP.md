@@ -1,60 +1,36 @@
-# FILEMAP — MoAA-Prime
-
-Update this at the end of each phase.
-This maps the repo so a new chat window can re-sync instantly.
+# FILEMAP — MoAA-Prime (update after every phase)
 
 ## Root
-- MASTER_HANDOFF.md  -> living handoff / continuity (Phase 1→end)
+- MASTER_HANDOFF.md  -> living handoff / continuity (complete)
 - FILEMAP.md         -> repo map (this file)
-- CHANGELOG.md       -> phase-by-phase changes
+- CHANGELOG.md       -> phase-by-phase log
 - pyproject.toml     -> packaging (src layout)
 - src/moaa_prime/... -> library code
 - tests/...          -> tests
-- scripts/...        -> runnable scripts
-- reports/...        -> generated demo/eval outputs (do not rely on being committed)
 
 ## Core entrypoints
-- src/moaa_prime/core/app.py       -> main app object (MoAAPrime)
-- src/moaa_prime/cli/__main__.py   -> `python -m moaa_prime "prompt"` entry
+- src/moaa_prime/core/app.py   -> main app object (MoAAPrime)
+- src/moaa_prime/cli/__main__.py -> python -m moaa_prime "...prompt..."
 
-## Agents / Contracts / Router (Phase 2)
-- src/moaa_prime/contracts/contract.py
-- src/moaa_prime/agents/base.py
-- src/moaa_prime/agents/math_agent.py
-- src/moaa_prime/agents/code_agent.py
-- src/moaa_prime/router/meta_router.py
+## Core building blocks (high level)
+- src/moaa_prime/contracts/     -> Contract + related typing
+- src/moaa_prime/agents/        -> BaseAgent + domain agents
+- src/moaa_prime/router/        -> MetaRouter + routing decisions
+- src/moaa_prime/oracle/        -> verifiers / truth scoring
+- src/moaa_prime/swarm/         -> swarm manager + debate loops
+- src/moaa_prime/memory/        -> ReasoningBank + E-MRE primitives
+- src/moaa_prime/sgm/           -> Shared Geometric Manifold + energy fusion
+- src/moaa_prime/sfc/           -> stability / budget coupling
+- src/moaa_prime/duality/       -> architect/oracle split
+- src/moaa_prime/gcel/          -> genetic contracts / evolution
+- src/moaa_prime/evals/         -> eval runners + metrics
+- src/moaa_prime/llm.py         -> LLMClient + StubLLMClient (real models later, optional)
 
-## Oracle (Phase 3)
-- src/moaa_prime/oracle/verifier.py
-- src/moaa_prime/oracle/__init__.py
+## Tests
+- tests/test_phase1_smoke.py
+- tests/test_phase2_router.py
+- tests/test_phase3_oracle.py
+- tests/test_phase4_swarm.py
+- tests/test_phase5_memory.py
+- (phase 6+ tests live under tests/ as present in repo)
 
-## Swarm (Phase 4+)
-- src/moaa_prime/swarm/manager.py
-- src/moaa_prime/swarm/__init__.py
-- src/moaa_prime/swarm/phase9_stable.py
-- src/moaa_prime/cli/phase9_stable_cmd.py
-
-## Memory / E-MRE v1 (Phase 5–6)
-- src/moaa_prime/memory/reasoning_bank.py
-- src/moaa_prime/memory/*  (AEDMC, SH-COS, GFO, curiosity bump hooks)
-
-## SGM + Fusion (Phase 7)
-- src/moaa_prime/sgm/*
-- src/moaa_prime/fusion/*
-- src/moaa_prime/fusion/mode.py
-
-## SFC (Phase 9)
-- src/moaa_prime/sfc/*
-
-## Duality (Phase 10)
-- src/moaa_prime/brains/*
-- src/moaa_prime/swarm/dual_brain_runner.py
-
-## GCEL (Phase 11)
-- src/moaa_prime/evolution/gcel.py
-
-## Eval + Demo (Phase 12)
-- src/moaa_prime/eval/runner.py
-- src/moaa_prime/eval/report.py
-- scripts/eval_run.py
-- reports/eval_report.json (generated artifact)

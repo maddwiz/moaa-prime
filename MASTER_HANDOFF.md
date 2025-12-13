@@ -1,72 +1,69 @@
-# MASTER_HANDOFF — MoAA-Prime (living continuity doc)
+# MASTER_HANDOFF — MoAA-Prime (living)
 
 Owner: Desmond
-Local: DGX Spark
-Rule: Always full-file replacements (no partial edits).
+Local path: ~/moaa-prime
+Goal: MoAA-Prime = MoE evolved into a swarm of adaptive agents with verifiable routing, memory (E-MRE), geometry (SGM), stability (SFC), dual-brain, and evolution (GCEL).
 
-## What MoAA-Prime is
-MoAA-Prime is a “Mixture of Adaptive Agents” system:
+## Golden rules (Dev workflow)
+- Full-block replacements only (no partial line edits).
+- Always keep continuity docs COMPLETE (Phase 1 → current).
+- After each phase: update MASTER_HANDOFF.md + FILEMAP.md + CHANGELOG.md, run tests, commit.
 
-- Agents with contracts (domains/tools/competence)
-- Router chooses agent(s) for prompts/tasks
-- Oracle scores truth/quality
-- Swarm manager runs multi-candidate deliberation and selects best
-- Memory: per-agent lanes + global ReasoningBank
-- E-MRE upgrades: AEDMC + SH-COS + GFO + curiosity bump
-- SGM + Energy Fusion scaffolding
-- SFC stability/budget hooks
-- Dual-brain hooks (Architect / Oracle split)
-- GCEL evolves contracts over time
-- Eval harness produces demo-ready JSON reports
+## How to run
+### Tests
+pytest -q
 
-## Current truth snapshot
-- `pytest -q` is passing (latest: 21 passed)
-- `python scripts/eval_run.py` writes: `reports/eval_report.json`
+### CLI (current)
+python -m moaa_prime "your prompt"
 
-## Continuity files (MUST stay complete)
-- MASTER_HANDOFF.md (this file)
-- FILEMAP.md
-- CHANGELOG.md
+## Roadmap status (truth snapshot)
+### Phase 1 — Packaging + smoke ✅
+- src layout + import smoke tests + minimal app object.
 
----
+### Phase 2 — Agents + Contracts + Router ✅
+- Contracts, BaseAgent, MathAgent, CodeAgent, MetaRouter routing.
 
-## Phases (truth status)
+### Phase 3 — Oracle ✅
+- Oracle verifier wired and tested.
 
-### Phase 1 — Packaging + smoke (DONE)
-Packaging + smoke tests.
+### Phase 4 — Swarm ✅
+- SwarmManager + swarm CLI wiring + tests.
 
-### Phase 2 — Agents + Contracts + Router (DONE)
-Contracts, BaseAgent, MathAgent/CodeAgent, MetaRouter.
+### Phase 5 — Memory v1 ✅ (per-agent + global ReasoningBank)
+- Per-agent memory hooks + ReasoningBank integration.
+- Tests expect result.meta["memory"] includes: local_hits, bank_hits.
+- Current status: pytest passes (21 passed).
 
-### Phase 3 — Oracle (DONE)
-OracleVerifier wired so run_once includes oracle info.
+### Phase 6 — E-MRE v1 (AEDMC + SH-COS + GFO + curiosity bump)
+- Implemented in repo per FILEMAP/CHANGELOG (see those files for exact modules).
 
-### Phase 4 — Swarm (DONE)
-SwarmManager + app.run_swarm returns best + candidates.
+### Phase 7 — SGM + Energy Fusion v0
+- Implemented in repo per FILEMAP/CHANGELOG.
 
-### Phase 5 — Memory v1 (DONE)
-Per-agent lanes + global ReasoningBank; task_id continuity.
+### Phase 8 — SFC (stability budgets)
+- Implemented in repo per FILEMAP/CHANGELOG.
 
-### Phase 6 — E-MRE v1 (DONE)
-AEDMC, SH-COS, GFO, curiosity bump integrated into memory approach.
+### Phase 9 — Dual-brain (Architect / Oracle)
+- Implemented in repo per FILEMAP/CHANGELOG.
 
-### Phase 7 — SGM + Energy Fusion v0 (DONE)
-SharedGeometricManifold + EnergyFusion scaffolding and tests.
+### Phase 10 — GCEL mutations
+- Implemented in repo per FILEMAP/CHANGELOG.
+- NOTE: Needs cleanup pass (naming, docs, guardrails) before final demo polish.
 
-### Phase 8 — Consolidation (DONE)
-Compatibility pass so newer hooks don’t break earlier contracts/tests.
+### Phase 11 — Eval scaffolding
+- Implemented in repo per FILEMAP/CHANGELOG.
 
-### Phase 9 — SFC (DONE / v0)
-StabilityFieldController + StableSwarmRunner + CLI; SwarmManager supports router OR direct list.
+### Phase 12 — Demo + benchmarks (CURRENT PHASE)
+- You chose: C) hard-polish demo + benchmarks + wire real models (optional).
 
-### Phase 10 — Dual-brain (DONE / v0)
-Architect/Oracle split runner scaffolding + tests.
+## Current known issue(s)
+- NONE blocking tests right now (all tests passing).
+- Next risk: wiring “real LLMs” must be optional so tests remain fast/offline.
 
-### Phase 11 — GCEL (DONE)
-Genetic Contract Evolution Loop (elite selection, mutation, crossover) with competence clamping; wired into app.
-
-### Phase 12 — Eval + Demo (DONE)
-EvalRunner executes “once” and “swarm” cases and writes JSON report:
-- Run: `python scripts/eval_run.py`
-- Output: `reports/eval_report.json`
+## What we do next (Phase 12C checklist)
+1) Create a "demo runner" that exercises: router → swarm → memory → fusion → budgets → duality → (optionally) GCEL.
+2) Create a "bench runner" that logs latency + token counts + memory hits + oracle scores.
+3) Wire "real model" behind an env var so default is StubLLMClient.
+4) Produce a clean demo command sequence (recordable).
+5) Freeze: tag release, push to GitHub.
 
