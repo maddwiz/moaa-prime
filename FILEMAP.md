@@ -33,6 +33,7 @@ This maps the repo so a new context window can re-sync quickly.
 
 - `src/moaa_prime/contracts/contract.py`: contract priors + Cycle 3 semantic fields (`tags`, `description`, `embedding`)
 - `src/moaa_prime/policy/tool_first.py`: PR-1 tool-first math/code policy, code verifier, and bounded repair loop
+- `src/moaa_prime/tools/code_sandbox.py`: PR-2 deterministic Python extraction + compile/exec sandbox with structured verification result
 - `src/moaa_prime/router/meta_router.py`: v1 router
 - `src/moaa_prime/router/router_v2.py`: RouterV2 scoring + exploration
 - `src/moaa_prime/router/router_v3.py`: learned RouterV3 + budget profiles + model load/save
@@ -86,6 +87,9 @@ Roadmap PR-0 compatibility tests:
 Roadmap PR-1 tests:
 - `tests/test_pr1_tool_first_policy.py`
 - `tests/test_pr1_tool_first_eval_script.py`
+
+Roadmap PR-2 tests:
+- `tests/test_pr2_code_sandbox_verifier.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`

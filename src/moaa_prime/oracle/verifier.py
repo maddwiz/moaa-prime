@@ -17,6 +17,52 @@ def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
 
 
+def _coerce_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def _extract_verification_signal(answer_metadata: Mapping[str, Any] | None) -> Dict[str, Any]:
+    meta = _coerce_mapping(answer_metadata)
+    tool_meta = _coerce_mapping(meta.get("tool_first"))
+    verification = _coerce_mapping(tool_meta.get("verification"))
+    if not verification:
+        return {}
+
+    stage = str(verification.get("stage", "") or "")
+    status = str(verification.get("status", "") or "").lower()
+    passed = bool(verification.get("passed", status == "pass"))
+    return {
+        "status": "pass" if passed else "fail",
+        "passed": passed,
+        "stage": stage,
+        "error_type": verification.get("error_type"),
+        "error_message": verification.get("error_message"),
+        "exec_ran": bool(verification.get("exec_ran", False)),
+    }
+
+
+def _verification_score_delta(signal: Mapping[str, Any]) -> float:
+    if not signal:
+        return 0.0
+
+    passed = bool(signal.get("passed", False))
+    stage = str(signal.get("stage", "") or "")
+    exec_ran = bool(signal.get("exec_ran", False))
+
+    if passed:
+        delta = 0.05
+        if stage == "exec" and exec_ran:
+            delta += 0.02
+        return _clamp(delta, 0.0, 0.12)
+
+    delta = -0.08
+    if stage == "exec" and exec_ran:
+        delta -= 0.02
+    return _clamp(delta, -0.20, 0.0)
+
+
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
 _STOPWORDS = {
     "a",
@@ -62,26 +108,53 @@ class OracleVerifier:
     - score(prompt, answer) returns float in [0, 1] (simple numeric)
     """
 
-    def verdict(self, prompt: str, answer: str) -> OracleVerdict:
+    def verdict(
+        self,
+        prompt: str,
+        answer: str,
+        *,
+        answer_metadata: Mapping[str, Any] | None = None,
+    ) -> OracleVerdict:
         # v0 heuristic oracle (simple + deterministic)
         p = (prompt or "").lower()
         a = str(answer or "").lower()
 
         # Tiny heuristics so tests + demos have stable behavior
+        base_score = 0.5
+        reason = "default oracle"
         if "solve" in p and ("x=" in a or "x =" in a):
-            return OracleVerdict(score=0.9, reason="contains x= form")
-
-        if "python" in p or "code" in p:
+            base_score = 0.9
+            reason = "contains x= form"
+        elif "python" in p or "code" in p:
             # if they mention a likely code term, give medium-high
             if "def " in a or "traceback" in a or "error" in a:
-                return OracleVerdict(score=0.8, reason="looks like code-debug response")
-            return OracleVerdict(score=0.6, reason="code-related response")
+                base_score = 0.8
+                reason = "looks like code-debug response"
+            else:
+                base_score = 0.6
+                reason = "code-related response"
 
-        # Default: neutral
-        return OracleVerdict(score=0.5, reason="default oracle")
+        signal = _extract_verification_signal(answer_metadata)
+        delta = _verification_score_delta(signal)
+        score = _clamp(base_score + delta, 0.0, 1.0)
 
-    def score(self, prompt: str, answer: str) -> float:
-        v = self.verdict(prompt, answer)
+        if signal:
+            reason = f"{reason}; verifier={signal.get('status', 'unknown')}"
+            return OracleVerdict(
+                score=score,
+                reason=reason,
+                meta={
+                    "oracle": "v1",
+                    "base_score": base_score,
+                    "verification_delta": delta,
+                    "verification_signal": dict(signal),
+                },
+            )
+
+        return OracleVerdict(score=score, reason=reason)
+
+    def score(self, prompt: str, answer: str, *, answer_metadata: Mapping[str, Any] | None = None) -> float:
+        v = self.verdict(prompt, answer, answer_metadata=answer_metadata)
         # Force [0,1] and float
         s = float(v.score)
         if s < 0.0:
@@ -287,34 +360,52 @@ class OracleV2:
         }
         return {k: _clamp(float(v), 0.0, 1.0) for k, v in components.items()}
 
-    def verdict(self, prompt: str, answer: str) -> OracleVerdict:
+    def verdict(
+        self,
+        prompt: str,
+        answer: str,
+        *,
+        answer_metadata: Mapping[str, Any] | None = None,
+    ) -> OracleVerdict:
         answer_text = str(answer or "")
         components = self._component_scores(prompt or "", answer_text)
         weights = self.rubric["weights"]
 
-        score = 0.0
+        base_score = 0.0
         for key, weight in weights.items():
-            score += float(weight) * float(components.get(key, 0.0))
-        score = _clamp(score, 0.0, 1.0)
+            base_score += float(weight) * float(components.get(key, 0.0))
+        base_score = _clamp(base_score, 0.0, 1.0)
+
+        signal = _extract_verification_signal(answer_metadata)
+        delta = _verification_score_delta(signal)
+        score = _clamp(base_score + delta, 0.0, 1.0)
 
         reason = (
             f"weighted_oracle_v2; correctness={components['correctness_proxy']:.2f}; "
             f"coherence={components['coherence']:.2f}; grounding={components['grounding']:.2f}"
         )
+        if signal:
+            reason = f"{reason}; verifier={signal.get('status', 'unknown')}"
+
+        meta: Dict[str, Any] = {
+            "oracle": "v2",
+            "weights": {k: float(v) for k, v in weights.items()},
+            "components": components,
+            "rubric_path": self.rubric_path or "builtin:rubric_v2.yaml",
+        }
+        if signal:
+            meta["base_score"] = base_score
+            meta["verification_delta"] = delta
+            meta["verification_signal"] = dict(signal)
 
         return OracleVerdict(
             score=score,
             reason=reason,
-            meta={
-                "oracle": "v2",
-                "weights": {k: float(v) for k, v in weights.items()},
-                "components": components,
-                "rubric_path": self.rubric_path or "builtin:rubric_v2.yaml",
-            },
+            meta=meta,
         )
 
-    def score(self, prompt: str, answer: str) -> float:
-        return float(self.verdict(prompt, answer).score)
+    def score(self, prompt: str, answer: str, *, answer_metadata: Mapping[str, Any] | None = None) -> float:
+        return float(self.verdict(prompt, answer, answer_metadata=answer_metadata).score)
 
     def consistency_check(self, prompt: str, answer: str, repeats: int = 5) -> Dict[str, float | bool]:
         r = max(1, int(repeats))

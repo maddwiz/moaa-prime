@@ -214,7 +214,17 @@ class MoAAPrime:
             )
 
         result = agent.handle(prompt, task_id=task_id)
-        oracle_block = oracle.verdict(prompt, result.text)
+        answer_meta = result.meta if isinstance(result.meta, Mapping) else None
+        if answer_meta is None:
+            oracle_block = oracle.verdict(prompt, result.text)
+        else:
+            try:
+                oracle_block = oracle.verdict(prompt, result.text, answer_metadata=answer_meta)
+            except TypeError as exc:
+                if "answer_metadata" in str(exc):
+                    oracle_block = oracle.verdict(prompt, result.text)
+                else:
+                    raise
 
         decision_payload = {
             "agent": decision.agent_name,

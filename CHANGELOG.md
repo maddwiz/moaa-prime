@@ -2,6 +2,34 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003K — PR-2 deterministic code sandbox verifier
+- Added PR-2 sandbox module:
+  - `src/moaa_prime/tools/code_sandbox.py`
+  - `src/moaa_prime/tools/__init__.py`
+- Added deterministic verifier result shape for compile/exec checks:
+  - status (`pass`/`fail`)
+  - stage (`compile`/`exec`)
+  - error type/message fields
+  - captured `stdout`
+- Added deterministic Python source extraction in sandbox module:
+  - fenced block extraction
+  - inline `def ...` extraction
+  - prompt-as-source extraction
+- Integrated sandbox verifier into tool-first code policy:
+  - `src/moaa_prime/policy/tool_first.py`
+  - preserves existing `CodeToolOutcome` flow while adding verifier metadata fields (`status`, `stdout`) to `CodeVerification`
+- Integrated verifier signal into oracle confidence (backward-compatible optional metadata path):
+  - `src/moaa_prime/oracle/verifier.py`
+  - `src/moaa_prime/core/app.py`
+  - `src/moaa_prime/swarm/manager.py`
+- Added deterministic PR-2 test coverage in:
+  - `tests/test_pr2_code_sandbox_verifier.py`
+  - covers sandbox pass/fail/error paths, oracle verifier-signal deltas, and verifier-driven repair loop behavior
+- Updated continuity docs:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+  - `CHANGELOG.md`
+
 ## Cycle 003J — PR-1 tool-first policy layer
 - Added PR-1 policy package:
   - `src/moaa_prime/policy/tool_first.py`

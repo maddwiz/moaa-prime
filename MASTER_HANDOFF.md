@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1)
+## Roadmap Status (PR-0, PR-1, PR-2)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -33,6 +33,16 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
   - `MathAgent` runs SymPy-first equation/expression solving, then falls back safely.
   - `CodeAgent` runs deterministic verify/repair on prompt code when present.
   - For natural language code prompts, `CodeAgent` does proposal -> verify/repair loop with bounded retries.
+
+- PR-2 is implemented:
+  - deterministic code sandbox verifier: `src/moaa_prime/tools/code_sandbox.py`
+  - verifier signal integrated into oracle confidence: `src/moaa_prime/oracle/verifier.py`
+  - deterministic PR-2 verifier/repair-loop tests: `tests/test_pr2_code_sandbox_verifier.py`
+- PR-2 behavior:
+  - sandbox module owns deterministic Python extraction and compile/exec verification paths.
+  - sandbox verify path includes compile-fail, exec-fail, and stdout-capture pass cases.
+  - oracle confidence applies deterministic additive verifier deltas while preserving no-signal behavior.
+  - code repair loop and `CodeAgent` metadata preserve verifier fields (`stage`, `error_type`, `line`, etc.).
 
 ## Cycle 3 Truth (Learning Loop)
 

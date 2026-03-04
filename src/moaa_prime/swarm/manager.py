@@ -63,19 +63,44 @@ class SwarmManager:
     # -----------------------------
     # Oracle helper
     # -----------------------------
-    def _oracle_block(self, prompt: str, text: str) -> Dict[str, Any]:
+    def _oracle_block(
+        self,
+        prompt: str,
+        text: str,
+        *,
+        answer_metadata: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
         if self.oracle is None:
             return {"score": 0.5, "reason": "no oracle", "meta": {}}
 
         if hasattr(self.oracle, "verdict"):
-            v = self.oracle.verdict(prompt, text)  # type: ignore[attr-defined]
+            if answer_metadata is None:
+                v = self.oracle.verdict(prompt, text)  # type: ignore[attr-defined]
+            else:
+                try:
+                    v = self.oracle.verdict(prompt, text, answer_metadata=answer_metadata)  # type: ignore[attr-defined]
+                except TypeError as exc:
+                    if "answer_metadata" in str(exc):
+                        v = self.oracle.verdict(prompt, text)  # type: ignore[attr-defined]
+                    else:
+                        raise
             return {
                 "score": float(getattr(v, "score", 0.5)),
                 "reason": getattr(v, "reason", ""),
                 "meta": getattr(v, "meta", {}) or {},
             }
 
-        return {"score": float(self.oracle.score(prompt, text)), "reason": "", "meta": {}}
+        if answer_metadata is None:
+            return {"score": float(self.oracle.score(prompt, text)), "reason": "", "meta": {}}
+
+        try:
+            score = float(self.oracle.score(prompt, text, answer_metadata=answer_metadata))
+        except TypeError as exc:
+            if "answer_metadata" in str(exc):
+                score = float(self.oracle.score(prompt, text))
+            else:
+                raise
+        return {"score": score, "reason": "", "meta": {}}
 
     def _build_router_trace(self, decisions: List[Any], chosen_mode: str) -> Dict[str, Any]:
         ranked: List[Dict[str, Any]] = []
@@ -196,7 +221,7 @@ class SwarmManager:
         agent_name = getattr(result, "agent_name", getattr(agent, "name", "agent"))
         meta = getattr(result, "meta", {}) or {}
 
-        oracle_block = self._oracle_block(prompt, text)
+        oracle_block = self._oracle_block(prompt, text, answer_metadata=meta if isinstance(meta, Mapping) else None)
 
         token_count = max(1, len(str(text).split()))
         contract = getattr(agent, "contract", None)
