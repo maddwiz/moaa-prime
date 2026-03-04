@@ -393,7 +393,19 @@ start_daemon() {
       fi
 
       local tmux_cmd
-      tmux_cmd="$(printf "cd %q && %q run %q %q >> %q 2>&1" "$ROOT_DIR" "$0" "$base_prompt" "$fallback_prompt" "$DAEMON_LOG")"
+      tmux_cmd="$(printf "cd %q && SWARM_AUTOPILOT_SLEEP_SECONDS=%q SWARM_AUTOPILOT_FULL_VALIDATE_EVERY=%q SWARM_AUTOPILOT_MAX_FAILURE_STREAK=%q SWARM_AUTOPILOT_VALIDATE_MODE=%q SWARM_AUTOPILOT_AUTOCOMMIT=%q SWARM_AUTOPILOT_AUTOPUSH=%q SWARM_AUTOPILOT_BRANCH_PREFIX=%q %q run %q %q >> %q 2>&1" \
+        "$ROOT_DIR" \
+        "$SLEEP_SECONDS" \
+        "$FULL_VALIDATE_EVERY" \
+        "$MAX_FAILURE_STREAK" \
+        "$VALIDATE_MODE" \
+        "$AUTOCOMMIT" \
+        "$AUTOPUSH" \
+        "$BRANCH_PREFIX" \
+        "$0" \
+        "$base_prompt" \
+        "$fallback_prompt" \
+        "$DAEMON_LOG")"
       tmux new-session -d -s "$TMUX_SESSION" "$tmux_cmd"
       echo "tmux" > "$MODE_FILE"
       rm -f "$PID_FILE"

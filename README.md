@@ -132,3 +132,9 @@ Useful environment controls:
 - `SWARM_AUTOPILOT_TMUX_SESSION=moaa-prime-swarm-autopilot`
 - `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
 - `SWARM_AUTOPILOT_AUTOPUSH=0|1`
+
+Example with explicit daemon settings:
+
+```bash
+SWARM_AUTOPILOT_AUTOCOMMIT=1 SWARM_AUTOPILOT_VALIDATE_MODE=quick ./scripts/swarm_autopilot.sh start
+```
