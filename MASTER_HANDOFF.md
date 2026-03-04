@@ -113,8 +113,9 @@ Router training script:
 - restores the best validation-NLL base-model epoch deterministically
 - falls back to full-data base training when run-group validation cannot be formed
 - splits calibration data deterministically by `run_id` group into calibration-train/calibration-validation
-- fits deterministic post-logit calibration (`calibration_scale`, `calibration_bias`) on calibration-train
-- accepts calibration only when it improves weighted NLL vs identity on calibration-validation
+- requires both calibration splits to contain positive and negative labels; otherwise skips calibration and keeps identity
+- fits deterministic post-logit calibration (`calibration_scale`, `calibration_bias`) on calibration-train using empirical (unweighted) prevalence
+- accepts calibration only when it improves empirical (unweighted) validation NLL vs identity on calibration-validation
 - writes `reports/router_train_report.json` with:
   - `training_accuracy`
   - `training_brier_score`

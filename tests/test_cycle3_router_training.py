@@ -95,6 +95,60 @@ def _positive_calibration_examples():
     return examples
 
 
+def _binary_calibration_examples():
+    examples = []
+    for run_id in ["g1", "g2", "g3", "g4"]:
+        examples.append(
+            RouterTrainingExample(
+                run_id=run_id,
+                prompt=f"prompt-{run_id}",
+                agent_name="neg",
+                budget_mode="balanced",
+                features={"similarity": 0.0},
+                label=0.0,
+            )
+        )
+        examples.append(
+            RouterTrainingExample(
+                run_id=run_id,
+                prompt=f"prompt-{run_id}",
+                agent_name="pos",
+                budget_mode="balanced",
+                features={"similarity": 1.0},
+                label=1.0,
+            )
+        )
+    return examples
+
+
+def _imbalanced_constant_feature_examples():
+    examples = []
+    for run_idx in range(12):
+        run_id = f"imb-{run_idx:02d}"
+        for neg_idx in range(19):
+            examples.append(
+                RouterTrainingExample(
+                    run_id=run_id,
+                    prompt=f"prompt-{run_id}",
+                    agent_name=f"neg-{neg_idx:02d}",
+                    budget_mode="balanced",
+                    features={"similarity": 0.0},
+                    label=0.0,
+                )
+            )
+        examples.append(
+            RouterTrainingExample(
+                run_id=run_id,
+                prompt=f"prompt-{run_id}",
+                agent_name="pos-00",
+                budget_mode="balanced",
+                features={"similarity": 0.0},
+                label=1.0,
+            )
+        )
+    return examples
+
+
 def test_router_training_is_deterministic_for_seed():
     examples = records_to_examples(_records(), seed=13)
 
@@ -203,8 +257,8 @@ def test_router_training_handles_no_validation_split_available():
 def test_router_training_calibration_gate_accepts_when_validation_nll_improves(monkeypatch):
     model = RouterV3Model(
         feature_names=["similarity"],
-        weights={"similarity": 0.0},
-        bias=0.0,
+        weights={"similarity": 2.0},
+        bias=-1.0,
         calibration_scale=1.0,
         calibration_bias=0.0,
         seed=0,
@@ -212,14 +266,33 @@ def test_router_training_calibration_gate_accepts_when_validation_nll_improves(m
 
     monkeypatch.setattr(
         "moaa_prime.router.training.fit_router_v3_calibration",
-        lambda *_args, **_kwargs: (1.0, 2.0),
+        lambda *_args, **_kwargs: (2.0, 0.0),
     )
-    scale, bias = _fit_router_v3_calibration_with_gate(model, _positive_calibration_examples(), seed=3)
-    assert scale == 1.0
-    assert bias == 2.0
+    scale, bias = _fit_router_v3_calibration_with_gate(model, _binary_calibration_examples(), seed=3)
+    assert scale == 2.0
+    assert bias == 0.0
 
 
 def test_router_training_calibration_gate_falls_back_when_validation_nll_worsens(monkeypatch):
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 2.0},
+        bias=-1.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=0,
+    )
+
+    monkeypatch.setattr(
+        "moaa_prime.router.training.fit_router_v3_calibration",
+        lambda *_args, **_kwargs: (0.5, 0.0),
+    )
+    scale, bias = _fit_router_v3_calibration_with_gate(model, _binary_calibration_examples(), seed=3)
+    assert scale == 1.0
+    assert bias == 0.0
+
+
+def test_router_training_calibration_gate_skips_single_class_splits(monkeypatch):
     model = RouterV3Model(
         feature_names=["similarity"],
         weights={"similarity": 0.0},
@@ -228,14 +301,50 @@ def test_router_training_calibration_gate_falls_back_when_validation_nll_worsens
         calibration_bias=0.0,
         seed=0,
     )
+    called = {"count": 0}
 
-    monkeypatch.setattr(
-        "moaa_prime.router.training.fit_router_v3_calibration",
-        lambda *_args, **_kwargs: (1.0, -20.0),
-    )
+    def _fake_fit(*_args, **_kwargs):
+        called["count"] += 1
+        return 1.5, 0.5
+
+    monkeypatch.setattr("moaa_prime.router.training.fit_router_v3_calibration", _fake_fit)
     scale, bias = _fit_router_v3_calibration_with_gate(model, _positive_calibration_examples(), seed=3)
+    assert called["count"] == 0
     assert scale == 1.0
     assert bias == 0.0
+
+
+def test_router_training_calibration_gate_preserves_imbalanced_prevalence():
+    examples = _imbalanced_constant_feature_examples()
+    empirical_prevalence = sum(float(ex.label) for ex in examples) / float(len(examples))
+    base_logit = math.log(empirical_prevalence / (1.0 - empirical_prevalence))
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=base_logit,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=0,
+    )
+
+    scale_a, bias_a = _fit_router_v3_calibration_with_gate(model, examples, seed=17)
+    scale_b, bias_b = _fit_router_v3_calibration_with_gate(model, examples, seed=17)
+
+    assert scale_a == scale_b
+    assert bias_a == bias_b
+
+    calibrated_model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=base_logit,
+        calibration_scale=scale_a,
+        calibration_bias=bias_a,
+        seed=0,
+    )
+    calibrated_prevalence = sum(
+        calibrated_model.predict_expected_success(ex.features) for ex in examples
+    ) / float(len(examples))
+    assert abs(calibrated_prevalence - empirical_prevalence) < 1.0e-3
 
 
 def test_router_training_metrics_brier_and_ece():

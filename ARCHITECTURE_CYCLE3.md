@@ -119,10 +119,11 @@ Workflow:
 5. apply deterministic validation-NLL early stopping for base training and restore best epoch parameters
 6. if run-group validation cannot be formed (for example a single `run_id`), train on all examples without early stopping
 7. split examples deterministically by `run_id` group for calibration train/validation
-8. fit deterministic post-logit calibration parameters on calibration-train split
-9. keep calibration only when validation weighted NLL improves vs identity (`scale=1`, `bias=0`)
-10. save model to `models/router_v3.pt`
-11. write report `reports/router_train_report.json` including:
+8. require binary label support (both positive and negative labels) in calibration-train and calibration-validation; otherwise skip calibration
+9. fit deterministic post-logit calibration parameters on calibration-train split with empirical (unweighted) prevalence
+10. keep calibration only when empirical (unweighted) validation NLL improves vs identity (`scale=1`, `bias=0`)
+11. save model to `models/router_v3.pt`
+12. write report `reports/router_train_report.json` including:
    - `training_accuracy`
    - `training_brier_score`
    - `training_ece`

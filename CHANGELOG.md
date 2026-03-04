@@ -2,6 +2,29 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003E — RouterV3 calibration binary-support gate increment
+- Strengthened RouterV3 calibration gating robustness in `src/moaa_prime/router/training.py`:
+  - calibration is skipped (identity retained) when calibration-train or calibration-validation lacks binary label support
+  - binary support requires at least one positive and one negative label in each split
+- Updated Cycle 3 calibration gate tests in `tests/test_cycle3_router_training.py`:
+  - accept/worsen gate cases now run against binary-class calibration fixtures
+  - added `test_router_training_calibration_gate_skips_single_class_splits`
+- Updated continuity docs to reflect the new calibration precondition:
+  - `MASTER_HANDOFF.md`
+  - `ARCHITECTURE_CYCLE3.md`
+
+## Cycle 003D — RouterV3 calibration prevalence-preservation increment
+- Improved RouterV3 calibration gating quality in `src/moaa_prime/router/training.py`:
+  - calibration fit/gate now uses empirical (unweighted) prevalence instead of class-balanced sample weights
+  - calibration is accepted only when empirical validation NLL improves vs identity calibration
+  - base logistic training still keeps deterministic class-balanced weighting (unchanged)
+- Added deterministic imbalance-focused coverage in `tests/test_cycle3_router_training.py`:
+  - `test_router_training_calibration_gate_preserves_imbalanced_prevalence`
+  - verifies calibration gate determinism and prevalence preservation under strong class imbalance
+- Updated continuity docs to match current calibration behavior:
+  - `MASTER_HANDOFF.md`
+  - `ARCHITECTURE_CYCLE3.md`
+
 ## Cycle 003C — RouterV3 budget-mode feature conditioning increment
 - Added deterministic budget-mode conditioning to RouterV3 learned features (`src/moaa_prime/router/router_v3.py`):
   - new feature name: `budget_mode_value`

@@ -384,6 +384,19 @@ def _split_calibration_examples_by_run_group(
     return calibration_train, calibration_validation
 
 
+def _has_binary_label_support(examples: Sequence[RouterTrainingExample]) -> bool:
+    has_pos = False
+    has_neg = False
+    for ex in examples:
+        if _label_to_binary(ex.label) >= 0.5:
+            has_pos = True
+        else:
+            has_neg = True
+        if has_pos and has_neg:
+            return True
+    return False
+
+
 def _evaluate_weighted_nll(
     model: RouterV3Model,
     examples: Sequence[RouterTrainingExample],
@@ -424,28 +437,30 @@ def _fit_router_v3_calibration_with_gate(
     calibration_train, calibration_validation = _split_calibration_examples_by_run_group(examples, seed=seed)
     if not calibration_train or not calibration_validation:
         return 1.0, 0.0
+    if not _has_binary_label_support(calibration_train) or not _has_binary_label_support(
+        calibration_validation
+    ):
+        return 1.0, 0.0
 
-    calibration_train_weights = _build_class_balanced_sample_weights(calibration_train)
     fitted_scale, fitted_bias = fit_router_v3_calibration(
         model,
         calibration_train,
-        sample_weights=calibration_train_weights,
+        sample_weights=None,
     )
 
-    calibration_validation_weights = _build_class_balanced_sample_weights(calibration_validation)
     identity_nll = _evaluate_weighted_nll(
         model,
         calibration_validation,
         calibration_scale=1.0,
         calibration_bias=0.0,
-        sample_weights=calibration_validation_weights,
+        sample_weights=None,
     )
     fitted_nll = _evaluate_weighted_nll(
         model,
         calibration_validation,
         calibration_scale=fitted_scale,
         calibration_bias=fitted_bias,
-        sample_weights=calibration_validation_weights,
+        sample_weights=None,
     )
 
     if fitted_nll + 1.0e-12 < identity_nll:
