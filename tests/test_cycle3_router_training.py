@@ -3,6 +3,8 @@ import math
 from moaa_prime.router.router_v3 import RouterV3Model
 from moaa_prime.router.training import (
     RouterTrainingExample,
+    _fit_router_v3_calibration_with_gate,
+    _split_calibration_examples_by_run_group,
     evaluate_brier_score,
     evaluate_expected_calibration_error,
     records_to_examples,
@@ -75,6 +77,23 @@ def _records():
     ]
 
 
+def _positive_calibration_examples():
+    examples = []
+    for run_id in ["g1", "g2", "g3", "g4"]:
+        for agent_name in ["a0", "a1"]:
+            examples.append(
+                RouterTrainingExample(
+                    run_id=run_id,
+                    prompt=f"prompt-{run_id}",
+                    agent_name=agent_name,
+                    budget_mode="balanced",
+                    features={"similarity": 0.0},
+                    label=1.0,
+                )
+            )
+    return examples
+
+
 def test_router_training_is_deterministic_for_seed():
     examples = records_to_examples(_records(), seed=13)
 
@@ -104,6 +123,59 @@ def test_router_training_supports_deterministic_calibration_toggle():
     )
     assert model_calibrated.calibration_scale == calibrated_repeat.calibration_scale
     assert model_calibrated.calibration_bias == calibrated_repeat.calibration_bias
+
+
+def test_router_training_calibration_split_is_run_group_deterministic():
+    examples = records_to_examples(_records(), seed=5)
+
+    train_a, val_a = _split_calibration_examples_by_run_group(examples, seed=41)
+    train_b, val_b = _split_calibration_examples_by_run_group(examples, seed=41)
+
+    assert [(ex.run_id, ex.agent_name) for ex in train_a] == [(ex.run_id, ex.agent_name) for ex in train_b]
+    assert [(ex.run_id, ex.agent_name) for ex in val_a] == [(ex.run_id, ex.agent_name) for ex in val_b]
+
+    train_runs = {ex.run_id for ex in train_a}
+    val_runs = {ex.run_id for ex in val_a}
+    assert train_runs.isdisjoint(val_runs)
+    assert train_runs | val_runs == {ex.run_id for ex in examples}
+
+
+def test_router_training_calibration_gate_accepts_when_validation_nll_improves(monkeypatch):
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=0,
+    )
+
+    monkeypatch.setattr(
+        "moaa_prime.router.training.fit_router_v3_calibration",
+        lambda *_args, **_kwargs: (1.0, 2.0),
+    )
+    scale, bias = _fit_router_v3_calibration_with_gate(model, _positive_calibration_examples(), seed=3)
+    assert scale == 1.0
+    assert bias == 2.0
+
+
+def test_router_training_calibration_gate_falls_back_when_validation_nll_worsens(monkeypatch):
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=0,
+    )
+
+    monkeypatch.setattr(
+        "moaa_prime.router.training.fit_router_v3_calibration",
+        lambda *_args, **_kwargs: (1.0, -20.0),
+    )
+    scale, bias = _fit_router_v3_calibration_with_gate(model, _positive_calibration_examples(), seed=3)
+    assert scale == 1.0
+    assert bias == 0.0
 
 
 def test_router_training_metrics_brier_and_ece():

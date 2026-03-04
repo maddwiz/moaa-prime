@@ -9,6 +9,10 @@ All notable changes to this repo, by phase.
   - persisted in `models/router_v3.pt` and loaded with backward-compatible defaults for legacy model files.
 - Improved router training quality (`src/moaa_prime/router/training.py`) with deterministic class-balanced sample weighting.
 - Added deterministic calibration fitting to training output (Platt-style scale/offset over learned logits).
+- Added deterministic run-group (`run_id`) calibration split and validation gate:
+  - fit calibration on calibration-train run groups
+  - keep fitted calibration only when weighted validation NLL improves versus identity calibration
+  - fallback to identity calibration when no improvement is observed
 - Added training calibration/quality metrics:
   - Brier score (`training_brier_score`)
   - Expected Calibration Error (`training_ece`)

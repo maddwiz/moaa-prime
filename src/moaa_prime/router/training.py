@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -24,6 +25,11 @@ def _sigmoid(x: float) -> float:
 
 def _label_to_binary(label: float) -> float:
     return 1.0 if float(label) >= 0.5 else 0.0
+
+
+def _stable_hash_int(value: str) -> int:
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    return int(digest[:16], 16)
 
 
 @dataclass(frozen=True)
@@ -225,11 +231,7 @@ def train_router_v3_model(
     calibration_scale = float(base.calibration_scale)
     calibration_bias = float(base.calibration_bias)
     if fit_calibration:
-        calibration_scale, calibration_bias = fit_router_v3_calibration(
-            model,
-            examples,
-            sample_weights=sample_weights,
-        )
+        calibration_scale, calibration_bias = _fit_router_v3_calibration_with_gate(model, examples, seed=seed)
 
     return RouterV3Model(
         feature_names=list(FEATURE_NAMES),
@@ -254,6 +256,112 @@ def _build_class_balanced_sample_weights(examples: Sequence[RouterTrainingExampl
     pos_weight = float(total) / (2.0 * float(num_pos))
     neg_weight = float(total) / (2.0 * float(num_neg))
     return [pos_weight if _label_to_binary(ex.label) >= 0.5 else neg_weight for ex in examples]
+
+
+def _split_calibration_examples_by_run_group(
+    examples: Sequence[RouterTrainingExample],
+    *,
+    seed: int,
+    validation_fraction: float = 0.25,
+) -> tuple[List[RouterTrainingExample], List[RouterTrainingExample]]:
+    if not examples:
+        return [], []
+
+    grouped: Dict[str, List[RouterTrainingExample]] = {}
+    for idx, ex in enumerate(examples):
+        run_key = str(ex.run_id).strip() or f"anon_{idx:06d}"
+        grouped.setdefault(run_key, []).append(ex)
+
+    run_ids = sorted(grouped.keys())
+    if len(run_ids) < 2:
+        return list(examples), []
+
+    raw_fraction = _clamp(float(validation_fraction), 0.0, 0.5)
+    num_validation_runs = int(round(float(len(run_ids)) * raw_fraction))
+    num_validation_runs = max(1, min(len(run_ids) - 1, num_validation_runs))
+
+    ranked_runs = sorted(run_ids, key=lambda run_id: (_stable_hash_int(f"{int(seed)}|{run_id}"), run_id))
+    validation_runs = set(ranked_runs[:num_validation_runs])
+
+    calibration_train: List[RouterTrainingExample] = []
+    calibration_validation: List[RouterTrainingExample] = []
+    for idx, ex in enumerate(examples):
+        run_key = str(ex.run_id).strip() or f"anon_{idx:06d}"
+        if run_key in validation_runs:
+            calibration_validation.append(ex)
+        else:
+            calibration_train.append(ex)
+
+    return calibration_train, calibration_validation
+
+
+def _evaluate_weighted_nll(
+    model: RouterV3Model,
+    examples: Sequence[RouterTrainingExample],
+    *,
+    calibration_scale: float,
+    calibration_bias: float,
+    sample_weights: Sequence[float] | None = None,
+) -> float:
+    if not examples:
+        return 0.0
+
+    if sample_weights is None or len(sample_weights) != len(examples):
+        sample_weights = [1.0 for _ in examples]
+
+    weighted_loss = 0.0
+    total_weight = 0.0
+    for idx, ex in enumerate(examples):
+        raw_logit = float(model.predict_logit(ex.features))
+        calibrated_logit = (float(calibration_scale) * raw_logit) + float(calibration_bias)
+        pred = _clamp(_sigmoid(calibrated_logit), 1.0e-12, 1.0 - 1.0e-12)
+        label = _label_to_binary(ex.label)
+        loss = -((label * math.log(pred)) + ((1.0 - label) * math.log(1.0 - pred)))
+        weight = max(0.0, float(sample_weights[idx]))
+        weighted_loss += weight * loss
+        total_weight += weight
+
+    if total_weight <= 0.0:
+        return 0.0
+    return float(weighted_loss / total_weight)
+
+
+def _fit_router_v3_calibration_with_gate(
+    model: RouterV3Model,
+    examples: Sequence[RouterTrainingExample],
+    *,
+    seed: int,
+) -> tuple[float, float]:
+    calibration_train, calibration_validation = _split_calibration_examples_by_run_group(examples, seed=seed)
+    if not calibration_train or not calibration_validation:
+        return 1.0, 0.0
+
+    calibration_train_weights = _build_class_balanced_sample_weights(calibration_train)
+    fitted_scale, fitted_bias = fit_router_v3_calibration(
+        model,
+        calibration_train,
+        sample_weights=calibration_train_weights,
+    )
+
+    calibration_validation_weights = _build_class_balanced_sample_weights(calibration_validation)
+    identity_nll = _evaluate_weighted_nll(
+        model,
+        calibration_validation,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        sample_weights=calibration_validation_weights,
+    )
+    fitted_nll = _evaluate_weighted_nll(
+        model,
+        calibration_validation,
+        calibration_scale=fitted_scale,
+        calibration_bias=fitted_bias,
+        sample_weights=calibration_validation_weights,
+    )
+
+    if fitted_nll + 1.0e-12 < identity_nll:
+        return float(fitted_scale), float(fitted_bias)
+    return 1.0, 0.0
 
 
 def fit_router_v3_calibration(

@@ -108,7 +108,9 @@ Router training script:
 - `scripts/train_router.py`
 - reads traces + dataset and writes `models/router_v3.pt`
 - uses deterministic class-balanced weighting during logistic fitting
-- fits deterministic post-logit calibration (`calibration_scale`, `calibration_bias`)
+- splits calibration data deterministically by `run_id` group into calibration-train/calibration-validation
+- fits deterministic post-logit calibration (`calibration_scale`, `calibration_bias`) on calibration-train
+- accepts calibration only when it improves weighted NLL vs identity on calibration-validation
 - writes `reports/router_train_report.json` with:
   - `training_accuracy`
   - `training_brier_score`
