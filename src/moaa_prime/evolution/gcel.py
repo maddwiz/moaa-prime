@@ -40,6 +40,9 @@ def crossover_contracts(a: Contract, b: Contract, *, rng: random.Random) -> Cont
 
     reliability = _clamp((float(a.reliability) * w) + (float(b.reliability) * (1.0 - w)), 0.05, 0.99)
     cost_prior = _clamp((float(a.cost_prior) * w) + (float(b.cost_prior) * (1.0 - w)), 0.01, 0.99)
+    tags = sorted(set((a.tags or []) + (b.tags or [])))
+    description = a.description if len(a.description) >= len(b.description) else b.description
+    embedding = list(a.embedding or b.embedding or [])
 
     return Contract(
         name=a.name,
@@ -48,6 +51,9 @@ def crossover_contracts(a: Contract, b: Contract, *, rng: random.Random) -> Cont
         competence=float(comp),
         reliability=float(reliability),
         cost_prior=float(cost_prior),
+        tags=tags,
+        description=description,
+        embedding=embedding,
     )
 
 

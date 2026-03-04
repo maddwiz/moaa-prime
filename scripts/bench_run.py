@@ -23,7 +23,7 @@ def timed(fn, n: int = 10) -> float:
 
 
 def main() -> int:
-    mode = (os.getenv("MOAA_BENCH_MODE") or "v2").strip().lower()
+    mode = (os.getenv("MOAA_BENCH_MODE") or "v3").strip().lower()
     seed = int(os.getenv("MOAA_BENCH_SEED") or "7")
 
     app = MoAAPrime(mode=mode, seed=seed)

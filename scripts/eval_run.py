@@ -35,7 +35,7 @@ def _load_cases() -> list[EvalCase]:
 
 
 def main() -> int:
-    mode = (os.getenv("MOAA_EVAL_MODE") or "v2").strip().lower()
+    mode = (os.getenv("MOAA_EVAL_MODE") or "v3").strip().lower()
     seed = int(os.getenv("MOAA_EVAL_SEED") or "11")
 
     runner = EvalRunner(model_mode=mode, seed=seed)

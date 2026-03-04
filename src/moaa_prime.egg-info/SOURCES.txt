@@ -41,8 +41,11 @@ src/moaa_prime/memory/types.py
 src/moaa_prime/oracle/__init__.py
 src/moaa_prime/oracle/verifier.py
 src/moaa_prime/router/__init__.py
+src/moaa_prime/router/embeddings.py
 src/moaa_prime/router/meta_router.py
 src/moaa_prime/router/router_v2.py
+src/moaa_prime/router/router_v3.py
+src/moaa_prime/router/training.py
 src/moaa_prime/sfc/__init__.py
 src/moaa_prime/sfc/controller.py
 src/moaa_prime/sgm/__init__.py
@@ -50,7 +53,10 @@ src/moaa_prime/sgm/manifold.py
 src/moaa_prime/swarm/__init__.py
 src/moaa_prime/swarm/dual_brain_runner.py
 src/moaa_prime/swarm/manager.py
+src/moaa_prime/swarm/pareto.py
 src/moaa_prime/swarm/phase9_stable.py
+src/moaa_prime/trace/__init__.py
+src/moaa_prime/trace/recorder.py
 src/moaa_prime/util/json_safe.py
 src/moaa_prime/util/rng.py
 tests/test_cli_module_entrypoint.py
@@ -58,6 +64,10 @@ tests/test_cycle2_gcel_v2.py
 tests/test_cycle2_oracle_v2.py
 tests/test_cycle2_router_v2.py
 tests/test_cycle2_swarm_v2.py
+tests/test_cycle3_pareto.py
+tests/test_cycle3_router_training.py
+tests/test_cycle3_router_v3.py
+tests/test_cycle3_trace_recorder.py
 tests/test_imports.py
 tests/test_phase10_dual_brain.py
 tests/test_phase11_gcel.py

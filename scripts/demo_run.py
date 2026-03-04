@@ -14,7 +14,7 @@ from moaa_prime.util.json_safe import dumps_pretty
 
 
 def main() -> int:
-    mode = (os.getenv("MOAA_DEMO_MODE") or "v2").strip().lower()
+    mode = (os.getenv("MOAA_DEMO_MODE") or "v3").strip().lower()
     seed = int(os.getenv("MOAA_DEMO_SEED") or "7")
 
     app = MoAAPrime(mode=mode, seed=seed)

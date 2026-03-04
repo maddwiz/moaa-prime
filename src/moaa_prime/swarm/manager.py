@@ -4,6 +4,7 @@ import statistics
 from typing import Any, Dict, List, Mapping, Optional, Union
 
 from moaa_prime.router.meta_router import MetaRouter
+from moaa_prime.swarm.pareto import pareto_frontier
 
 try:
     from moaa_prime.oracle.verifier import OracleVerifier
@@ -25,13 +26,12 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 
 class SwarmManager:
     """
-    SwarmManager (Phase 4–9 compatible + Cycle 2 v2 mode)
+    SwarmManager (Phase 4–9 compatible + Cycle 2/3 mode support)
 
     GUARANTEES:
     - `run(...)` exists and returns {"best": ..., "candidates": [...]}.
-    - If constructed with MetaRouter: router-driven behavior.
-    - If constructed with a raw agent list: still supports `run(...)`.
-    - v2 mode emits structured trace under `trace`.
+    - v1/v2 legacy behavior preserved.
+    - v3 adds Pareto-based selection with adaptive budget weighting.
     """
 
     def __init__(
@@ -67,7 +67,6 @@ class SwarmManager:
         if self.oracle is None:
             return {"score": 0.5, "reason": "no oracle", "meta": {}}
 
-        # Prefer rich verdict if available
         if hasattr(self.oracle, "verdict"):
             v = self.oracle.verdict(prompt, text)  # type: ignore[attr-defined]
             return {
@@ -76,12 +75,12 @@ class SwarmManager:
                 "meta": getattr(v, "meta", {}) or {},
             }
 
-        # Fallback: score-only
         return {"score": float(self.oracle.score(prompt, text)), "reason": "", "meta": {}}
 
-    def _build_router_trace(self, decisions: List[Any]) -> Dict[str, Any]:
+    def _build_router_trace(self, decisions: List[Any], chosen_mode: str) -> Dict[str, Any]:
         ranked: List[Dict[str, Any]] = []
         for d in decisions:
+            comps = getattr(d, "components", {}) or {}
             ranked.append(
                 {
                     "agent": getattr(d, "agent_name", ""),
@@ -91,7 +90,7 @@ class SwarmManager:
                     "selected_by_exploration": bool(getattr(d, "selected_by_exploration", False)),
                     "reason": getattr(d, "reason", ""),
                     "rationale": getattr(d, "rationale", ""),
-                    "components": getattr(d, "components", {}) or {},
+                    "components": comps,
                 }
             )
 
@@ -100,7 +99,7 @@ class SwarmManager:
             exploration_probability = float(ranked[0].get("exploration_probability", 0.0))
 
         return {
-            "mode": self.mode,
+            "mode": chosen_mode,
             "ranked": ranked,
             "exploration_probability": exploration_probability,
         }
@@ -117,9 +116,10 @@ class SwarmManager:
         memory_hints: Optional[Mapping[str, Any]] = None,
         budget: Optional[Mapping[str, Any]] = None,
         history_stats: Optional[Mapping[str, Any]] = None,
+        budget_mode: Optional[str] = None,
     ) -> tuple[List[Any], List[Any]]:
         if self.router is not None:
-            # RouterV2 supports richer kwargs; MetaRouter only accepts prompt/k.
+            # RouterV3/RouterV2 supports richer kwargs; MetaRouter only accepts prompt/k.
             try:
                 agents, decisions = self.router.route_top_k(  # type: ignore[misc]
                     prompt,
@@ -128,11 +128,23 @@ class SwarmManager:
                     memory_hints=memory_hints,
                     budget=budget,
                     history_stats=history_stats,
+                    budget_mode=budget_mode,
                 )
                 return list(agents), list(decisions)
             except TypeError:
-                agents, decisions = self.router.route_top_k(prompt, k=top_k)
-                return list(agents), list(decisions)
+                try:
+                    agents, decisions = self.router.route_top_k(  # type: ignore[misc]
+                        prompt,
+                        k=top_k,
+                        task_metadata=task_metadata,
+                        memory_hints=memory_hints,
+                        budget=budget,
+                        history_stats=history_stats,
+                    )
+                    return list(agents), list(decisions)
+                except TypeError:
+                    agents, decisions = self.router.route_top_k(prompt, k=top_k)
+                    return list(agents), list(decisions)
 
         if self._agents_override is not None:
             agents = list(self._agents_override)
@@ -150,10 +162,17 @@ class SwarmManager:
 
         return [], []
 
-    def _candidate_prompt_v2(self, prompt: str, agent: Any, round_idx: int) -> str:
+    def _candidate_prompt(self, prompt: str, agent: Any, round_idx: int, mode: str) -> str:
+        if mode == "v1":
+            return prompt
+
         contract = getattr(agent, "contract", None)
         domains = getattr(contract, "domains", []) if contract is not None else []
         domain_hint = ",".join(str(d) for d in domains) if domains else "general"
+
+        if mode == "v3":
+            return f"{prompt}\n[agent_domain={domain_hint}; round={round_idx + 1}; style=deliberative]"
+
         return f"{prompt}\n[agent_domain={domain_hint}; round={round_idx + 1}]"
 
     def _build_candidate(
@@ -166,9 +185,8 @@ class SwarmManager:
         rank_idx: int,
         mode: str,
     ) -> Dict[str, Any]:
-        call_prompt = prompt if mode == "v1" else self._candidate_prompt_v2(prompt, agent, round_idx)
+        call_prompt = self._candidate_prompt(prompt, agent, round_idx, mode)
 
-        # Some agents accept task_id, some don't. Try both.
         try:
             result = agent.handle(call_prompt, task_id=task_id)
         except TypeError:
@@ -187,6 +205,9 @@ class SwarmManager:
         latency_proxy = float(40 + (4 * token_count) + (8 * rank_idx) + (3 * round_idx) + int(20 * cost_prior))
         cost_proxy = float(16 + token_count + int(42 * cost_prior))
 
+        grounding = float((((oracle_block.get("meta", {}) or {}).get("components", {}) or {}).get("grounding", oracle_block["score"])))
+        confidence_proxy = _clamp((0.65 * float(oracle_block["score"])) + (0.35 * grounding), 0.0, 1.0)
+
         return {
             "agent": str(agent_name),
             "text": str(text),
@@ -196,9 +217,36 @@ class SwarmManager:
             "rank": int(rank_idx),
             "latency_proxy": latency_proxy,
             "cost_proxy": cost_proxy,
+            "confidence_proxy": confidence_proxy,
         }
 
-    def _select_best(self, candidates: List[Dict[str, Any]], *, cross_check: bool = False) -> tuple[Dict[str, Any], float, Dict[str, Any]]:
+    def _apply_cross_critique(self, candidates: List[Dict[str, Any]], *, enabled: bool) -> Dict[str, Any]:
+        if not enabled:
+            return {"enabled": False, "status": "disabled"}
+        if len(candidates) < 2:
+            return {"enabled": True, "status": "insufficient-candidates"}
+
+        ranked = sorted(candidates, key=lambda c: float((c.get("oracle", {}) or {}).get("score", 0.0)), reverse=True)
+        c1 = ranked[0]
+        c2 = ranked[1]
+
+        note_1 = f"Critique against {c2['agent']}: strengthen grounding and constraints."
+        note_2 = f"Critique against {c1['agent']}: improve directness and correctness."
+
+        c1["critique"] = note_1
+        c2["critique"] = note_2
+
+        c1["confidence_proxy"] = _clamp(float(c1.get("confidence_proxy", 0.5)) + 0.02, 0.0, 1.0)
+        c2["confidence_proxy"] = _clamp(float(c2.get("confidence_proxy", 0.5)) + 0.01, 0.0, 1.0)
+
+        return {
+            "enabled": True,
+            "status": "top2-critique-applied",
+            "candidate_a": c1["agent"],
+            "candidate_b": c2["agent"],
+        }
+
+    def _select_best_legacy(self, candidates: List[Dict[str, Any]], *, cross_check: bool = False) -> tuple[Dict[str, Any], float, Dict[str, Any]]:
         if not candidates:
             return (
                 {
@@ -210,28 +258,30 @@ class SwarmManager:
                     "rank": 0,
                     "latency_proxy": 0.0,
                     "cost_proxy": 0.0,
+                    "confidence_proxy": 0.0,
                 },
                 0.0,
                 {"enabled": cross_check, "status": "no-candidates"},
             )
 
-        ranked = sorted(candidates, key=lambda c: float(c["oracle"]["score"]), reverse=True)
+        ranked = sorted(candidates, key=lambda c: float((c.get("oracle", {}) or {}).get("score", 0.0)), reverse=True)
         best = ranked[0]
 
-        second_score = float(ranked[1]["oracle"]["score"]) if len(ranked) > 1 else float(best["oracle"]["score"])
-        margin = _clamp(float(best["oracle"]["score"]) - second_score, 0.0, 1.0)
+        second_score = float((ranked[1].get("oracle", {}) or {}).get("score", 0.0)) if len(ranked) > 1 else float((best.get("oracle", {}) or {}).get("score", 0.0))
+        margin = _clamp(float((best.get("oracle", {}) or {}).get("score", 0.0)) - second_score, 0.0, 1.0)
 
-        values = [float(c["oracle"]["score"]) for c in ranked]
+        values = [float((c.get("oracle", {}) or {}).get("score", 0.0)) for c in ranked]
         dispersion = float(statistics.pstdev(values)) if len(values) > 1 else 0.0
-
         confidence = _clamp(0.55 + (0.35 * margin) + (0.10 * (1.0 - dispersion)), 0.0, 1.0)
 
         cross_meta: Dict[str, Any] = {"enabled": bool(cross_check), "status": "disabled"}
         if cross_check and len(ranked) > 1:
             c1 = ranked[0]
             c2 = ranked[1]
-            c1_ground = float((c1.get("oracle", {}).get("meta", {}) or {}).get("components", {}).get("grounding", 0.0))
-            c2_ground = float((c2.get("oracle", {}).get("meta", {}) or {}).get("components", {}).get("grounding", 0.0))
+            c1_components = ((c1.get("oracle", {}) or {}).get("meta", {}) or {}).get("components", {}) or {}
+            c2_components = ((c2.get("oracle", {}) or {}).get("meta", {}) or {}).get("components", {}) or {}
+            c1_ground = float(c1_components.get("grounding", 0.0))
+            c2_ground = float(c2_components.get("grounding", 0.0))
             winner = c1 if c1_ground >= c2_ground else c2
             best = winner
             confidence = _clamp(confidence + 0.03, 0.0, 1.0)
@@ -246,6 +296,98 @@ class SwarmManager:
             }
 
         return best, confidence, cross_meta
+
+    def _select_best_v3(self, candidates: List[Dict[str, Any]], *, budget_mode: str) -> tuple[Dict[str, Any], float, Dict[str, Any]]:
+        if not candidates:
+            return (
+                {
+                    "agent": "",
+                    "text": "",
+                    "meta": {},
+                    "oracle": {"score": 0.0, "reason": "no candidates", "meta": {}},
+                    "round": 0,
+                    "rank": 0,
+                    "latency_proxy": 0.0,
+                    "cost_proxy": 0.0,
+                    "confidence_proxy": 0.0,
+                },
+                0.0,
+                {"enabled": True, "status": "no-candidates", "frontier": []},
+            )
+
+        profile_map = {
+            "cheap": {"score": 0.45, "confidence": 0.10, "latency": 0.20, "cost": 0.25},
+            "balanced": {"score": 0.60, "confidence": 0.15, "latency": 0.13, "cost": 0.12},
+            "max_quality": {"score": 0.78, "confidence": 0.18, "latency": 0.02, "cost": 0.02},
+        }
+        profile = profile_map.get(budget_mode, profile_map["balanced"])
+
+        max_latency = max(float(c.get("latency_proxy", 0.0)) for c in candidates)
+        max_cost = max(float(c.get("cost_proxy", 0.0)) for c in candidates)
+        max_latency = max(1.0, max_latency)
+        max_cost = max(1.0, max_cost)
+
+        points = []
+        for idx, c in enumerate(candidates):
+            points.append(
+                {
+                    "id": float(idx),
+                    "score": float((c.get("oracle", {}) or {}).get("score", 0.0)),
+                    "confidence": float(c.get("confidence_proxy", 0.5)),
+                    "latency": float(c.get("latency_proxy", 0.0)),
+                    "cost": float(c.get("cost_proxy", 0.0)),
+                }
+            )
+
+        frontier = pareto_frontier(points)
+        frontier_ids = [int(p.get("id", 0.0)) for p in frontier]
+        frontier_candidates = [candidates[i] for i in frontier_ids if 0 <= i < len(candidates)]
+        if not frontier_candidates:
+            frontier_candidates = list(candidates)
+
+        def _utility(c: Dict[str, Any]) -> float:
+            score = float((c.get("oracle", {}) or {}).get("score", 0.0))
+            conf = float(c.get("confidence_proxy", 0.5))
+            lat_eff = _clamp(1.0 - (float(c.get("latency_proxy", 0.0)) / max_latency), 0.0, 1.0)
+            cost_eff = _clamp(1.0 - (float(c.get("cost_proxy", 0.0)) / max_cost), 0.0, 1.0)
+            return _clamp(
+                (profile["score"] * score)
+                + (profile["confidence"] * conf)
+                + (profile["latency"] * lat_eff)
+                + (profile["cost"] * cost_eff),
+                0.0,
+                1.0,
+            )
+
+        best = max(
+            frontier_candidates,
+            key=lambda c: (
+                _utility(c),
+                float((c.get("oracle", {}) or {}).get("score", 0.0)),
+                -float(c.get("latency_proxy", 0.0)),
+                -float(c.get("cost_proxy", 0.0)),
+            ),
+        )
+        confidence = _clamp(float(best.get("confidence_proxy", 0.5)), 0.0, 1.0)
+
+        frontier_meta = [
+            {
+                "agent": c.get("agent", ""),
+                "score": float((c.get("oracle", {}) or {}).get("score", 0.0)),
+                "confidence": float(c.get("confidence_proxy", 0.0)),
+                "latency": float(c.get("latency_proxy", 0.0)),
+                "cost": float(c.get("cost_proxy", 0.0)),
+            }
+            for c in frontier_candidates
+        ]
+
+        return best, confidence, {
+            "enabled": True,
+            "status": "pareto-selected",
+            "budget_mode": budget_mode,
+            "profile": profile,
+            "frontier": frontier_meta,
+        }
 
     def _aggregate_proxies(self, candidates: List[Dict[str, Any]]) -> Dict[str, float]:
         if not candidates:
@@ -276,6 +418,14 @@ class SwarmManager:
         cross_check: bool = False,
     ) -> Dict[str, Any]:
         chosen_mode = (mode or self.mode or "v1").strip().lower()
+        if chosen_mode not in {"v1", "v2", "v3"}:
+            chosen_mode = "v1"
+
+        budget_mode = "balanced"
+        if isinstance(budget, Mapping):
+            maybe_mode = str(budget.get("mode", "") or "").strip().lower()
+            if maybe_mode in {"cheap", "balanced", "max_quality"}:
+                budget_mode = maybe_mode
 
         agents, decisions = self._get_agents_and_decisions(
             prompt,
@@ -284,6 +434,7 @@ class SwarmManager:
             memory_hints=memory_hints,
             budget=budget,
             history_stats=history_stats,
+            budget_mode=budget_mode,
         )
 
         candidates: List[Dict[str, Any]] = []
@@ -300,27 +451,39 @@ class SwarmManager:
                     )
                 )
 
-        best, confidence, cross_meta = self._select_best(candidates, cross_check=(chosen_mode == "v2" and bool(cross_check)))
+        cross_meta = {"enabled": False, "status": "disabled"}
+        pareto_meta = {"enabled": False, "status": "not-used", "frontier": []}
+
+        if chosen_mode == "v3":
+            cross_meta = self._apply_cross_critique(candidates, enabled=bool(cross_check))
+            best, confidence, pareto_meta = self._select_best_v3(candidates, budget_mode=budget_mode)
+        else:
+            best, confidence, cross_meta = self._select_best_legacy(
+                candidates,
+                cross_check=(chosen_mode == "v2" and bool(cross_check)),
+            )
 
         aggregates = self._aggregate_proxies(candidates)
 
         trace = {
-            "router": self._build_router_trace(decisions),
+            "router": self._build_router_trace(decisions, chosen_mode),
             "swarm": {
                 "mode": chosen_mode,
                 "rounds": int(max(1, rounds)),
                 "top_k": int(max(1, top_k)),
                 "num_candidates": int(len(candidates)),
                 "cross_check": cross_meta,
+                "pareto": pareto_meta,
+                "budget_mode": budget_mode,
             },
             "oracle": {
-                "mode": "oracle_v2" if chosen_mode == "v2" else "oracle_v1",
+                "mode": "oracle_v2" if chosen_mode in {"v2", "v3"} else "oracle_v1",
                 "scores": [
                     {
                         "agent": c["agent"],
-                        "score": float(c["oracle"]["score"]),
-                        "reason": c["oracle"].get("reason", ""),
-                        "components": (c["oracle"].get("meta", {}) or {}).get("components", {}),
+                        "score": float((c.get("oracle", {}) or {}).get("score", 0.0)),
+                        "reason": (c.get("oracle", {}) or {}).get("reason", ""),
+                        "components": ((c.get("oracle", {}) or {}).get("meta", {}) or {}).get("components", {}),
                     }
                     for c in candidates
                 ],
@@ -329,6 +492,7 @@ class SwarmManager:
                 "agent": best.get("agent", ""),
                 "score": float((best.get("oracle", {}) or {}).get("score", 0.0)),
                 "confidence": float(confidence),
+                "budget_mode": budget_mode,
             },
         }
 
@@ -365,12 +529,10 @@ class SwarmManager:
         if not candidates:
             return ""
 
-        # Optional energy fusion path (if wired)
         if self.fusion_mode == "energy" and self.energy_fusion and self.oracle:
             pick = self.energy_fusion.pick(prompt, candidates, oracle_score=self.oracle.score)
             return pick.text
 
-        # Default: best from run output
         best = out.get("best", {})
         if isinstance(best, dict):
             return str(best.get("text", ""))

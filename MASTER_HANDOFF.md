@@ -7,20 +7,22 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 
 - Keep changes small, test-backed, and reversible.
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
-- Treat `reports/` as generated output.
+- Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Cycle 2 Truth (A/B + Lift)
+## Cycle 3 Truth (Learning Loop)
 
-A/B execution modes:
+Execution modes:
 - `v1`: legacy `MetaRouter` + `OracleVerifier` + legacy swarm/GCEL
-- `v2`: `RouterV2` + `OracleV2` + Swarm trace/confidence + `GCELV2` gating
+- `v2`: `RouterV2` + `OracleV2` + Cycle 2 swarm/GCEL gating
+- `v3`: `RouterV3` + contract embeddings + Pareto swarm + trace-learning pipeline
 
 Mode controls:
-- `MoAAPrime(mode="v1"|"v2")`
-- env config: `MOAA_AB_MODE=v1|v2`
+- `MoAAPrime(mode="v1"|"v2"|"v3")`
+- env: `MOAA_AB_MODE=v1|v2|v3`
 
-Cycle 2 architecture doc:
+Architecture docs:
 - `ARCHITECTURE_CYCLE2.md`
+- `ARCHITECTURE_CYCLE3.md`
 
 ## Current CLI Truth
 
@@ -46,7 +48,7 @@ python -m pip install pytest pyyaml
 python -m pip install -e . --no-deps
 ```
 
-## Required Runbook (Cycle 2)
+## Required Runbook (Cycle 3)
 
 ```bash
 .venv/bin/pytest -q
@@ -54,6 +56,8 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/bench_run.py
 .venv/bin/python scripts/eval_run.py
 .venv/bin/python scripts/eval_compare.py
+.venv/bin/python scripts/train_router.py
+.venv/bin/python scripts/eval_router.py
 ```
 
 Primary artifacts:
@@ -61,31 +65,50 @@ Primary artifacts:
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/eval_compare.json`
-- `reports/trace_demo_v2.json`
-- `reports/trace_compare_v1_11.json`
-- `reports/trace_compare_v2_11.json`
+- `reports/router_train_report.json`
+- `reports/eval_router.json`
+- `reports/traces/run_<id>.json`
+- `datasets/router_training.jsonl`
+- `models/router_v3.pt`
 
-## Eval Compare Metrics
+## Learning Pipeline
 
-`reports/eval_compare.json` includes:
-- `avg_oracle_score` (v1/v2/delta)
-- `win_rate_v2_over_v1`
-- `routing_entropy` (v1/v2/delta)
-- `avg_cost_proxy` (v1/v2/delta)
-- `avg_latency_proxy` (v1/v2/delta)
+Every swarm run appends a training example:
+- trace file: `reports/traces/run_<id>.json`
+- dataset append: `datasets/router_training.jsonl`
+
+Router training script:
+- `scripts/train_router.py`
+- reads traces + dataset and writes `models/router_v3.pt`
+
+Router evaluation script:
+- `scripts/eval_router.py`
+- compares `v2` vs `v3` with:
+  - `routing_accuracy`
+  - `oracle_score_gain`
+  - `latency_efficiency`
+  - `cost_efficiency`
 
 ## Environment Variables
 
-LLM/provider wiring (unchanged):
+LLM/provider wiring:
 - `MOAA_LLM_PROVIDER` (`stub` default; `ollama` supported)
 - `MOAA_OLLAMA_HOST` (`http://127.0.0.1:11434` default)
 - `MOAA_OLLAMA_MODEL` (`llama3.1:8b-instruct` default)
 
-Cycle 2 mode controls:
-- `MOAA_AB_MODE=v1|v2`
-- `MOAA_DEMO_MODE=v1|v2`
-- `MOAA_BENCH_MODE=v1|v2`
-- `MOAA_EVAL_MODE=v1|v2`
+Mode controls:
+- `MOAA_AB_MODE=v1|v2|v3`
+- `MOAA_DEMO_MODE=v1|v2|v3` (default script mode now `v3`)
+- `MOAA_BENCH_MODE=v1|v2|v3` (default script mode now `v3`)
+- `MOAA_EVAL_MODE=v1|v2|v3` (default script mode now `v3`)
+
+Router v3 / learning controls:
+- `MOAA_BUDGET_MODE=cheap|balanced|max_quality`
+- `MOAA_ROUTER_V3_MODEL` (default `models/router_v3.pt`)
+- `MOAA_TRACE_DIR` (default `reports/traces`)
+- `MOAA_ROUTER_DATASET` (default `datasets/router_training.jsonl`)
+- `MOAA_ROUTER_TRAIN_SEED`
+- `MOAA_ROUTER_EVAL_SEED`
 
 Optional seeds:
 - `MOAA_DEMO_SEED`

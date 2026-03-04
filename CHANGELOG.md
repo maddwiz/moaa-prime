@@ -2,6 +2,56 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003 — Learning system (RouterV3 + traces + Pareto + training)
+- Added `ARCHITECTURE_CYCLE3.md` with full Cycle 3 data flow and interfaces.
+- Added RouterV3 (`src/moaa_prime/router/router_v3.py`) with:
+  - learned expected-success model (`RouterV3Model`)
+  - deterministic local model load/save (`models/router_v3.pt`)
+  - adaptive budget profiles (`cheap`, `balanced`, `max_quality`)
+  - embedding + history + budget feature scoring
+- Added deterministic embedding utilities (`src/moaa_prime/router/embeddings.py`) for:
+  - task embedding
+  - contract embedding
+  - cosine similarity
+- Added router training pipeline (`src/moaa_prime/router/training.py`) and script:
+  - `scripts/train_router.py`
+  - writes `reports/router_train_report.json` + `models/router_v3.pt`
+- Added trace recorder (`src/moaa_prime/trace/recorder.py`) and app wiring so every swarm run writes:
+  - `reports/traces/run_<id>.json`
+  - `datasets/router_training.jsonl`
+- Extended contract schema (`src/moaa_prime/contracts/contract.py`) with:
+  - `tags`
+  - `description`
+  - `embedding`
+- Upgraded swarm manager (`src/moaa_prime/swarm/manager.py`) with v3 behavior:
+  - candidate confidence proxy
+  - optional cross-critique hooks
+  - Pareto frontier selection by score/confidence/latency/cost
+  - budget-mode-aware final candidate utility
+- Added Pareto helper module: `src/moaa_prime/swarm/pareto.py`.
+- Upgraded app composition root (`src/moaa_prime/core/app.py`) to support:
+  - mode `v3`
+  - RouterV3/SwarmV3 wiring
+  - budget mode propagation
+  - training trace + dataset append on swarm runs
+- Added RouterV2 vs RouterV3 evaluation script:
+  - `scripts/eval_router.py`
+  - writes `reports/eval_router.json` metrics:
+    - `routing_accuracy`
+    - `oracle_score_gain`
+    - `latency_efficiency`
+    - `cost_efficiency`
+- Updated runnable defaults to showcase Cycle 3 (`v3`) in:
+  - `scripts/demo_run.py`
+  - `scripts/bench_run.py`
+  - `scripts/eval_run.py`
+- Added deterministic Cycle 3 tests:
+  - `tests/test_cycle3_router_training.py`
+  - `tests/test_cycle3_router_v3.py`
+  - `tests/test_cycle3_pareto.py`
+  - `tests/test_cycle3_trace_recorder.py`
+- Updated `.gitignore` to exclude generated `datasets/` artifacts.
+
 ## Cycle 002 — Real MoAA lift (Router/Oracle/Swarm/GCEL v2)
 - Added `ARCHITECTURE_CYCLE2.md` with exact v2 data flow, interfaces, formulas, and rubric.
 - Added RouterV2 (`src/moaa_prime/router/router_v2.py`) with:
@@ -27,10 +77,9 @@ All notable changes to this repo, by phase.
 - Upgraded app composition root (`src/moaa_prime/core/app.py`) to support A/B mode wiring and trace file emission:
   - `reports/trace_<runid>.json`
 - Upgraded eval stack:
-  - `src/moaa_prime/eval/runner.py` now mode-aware with oracle/entropy/cost/latency proxies
-  - `src/moaa_prime/eval/report.py` now writes aggregate metrics
-  - added `scripts/eval_compare.py` for v1 vs v2 lift report (`reports/eval_compare.json`)
-- Updated runnable scripts (`scripts/demo_run.py`, `scripts/bench_run.py`, `scripts/eval_run.py`) for deterministic Cycle 2 output.
+  - `src/moaa_prime/eval/runner.py` mode-aware with oracle/entropy/cost/latency proxies
+  - `src/moaa_prime/eval/report.py` aggregate metrics
+  - `scripts/eval_compare.py` for v1 vs v2 lift report (`reports/eval_compare.json`)
 - Added deterministic Cycle 2 tests:
   - `tests/test_cycle2_router_v2.py`
   - `tests/test_cycle2_oracle_v2.py`
