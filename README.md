@@ -1,50 +1,29 @@
 # MoAA-Prime
 
-MoAA-Prime is a research prototype for a Mixture of Adaptive Agents workflow:
-
-- contract-based specialist agents
-- prompt router + decision metadata
-- oracle scoring
-- swarm deliberation
-- memory hooks (ReasoningBank + E-MRE)
-- contract evolution (GCEL)
-- optional real-model execution via Ollama
+MoAA-Prime is a Mixture of Adaptive Agents prototype with contract-based routing, oracle scoring, swarm deliberation, memory hooks, and optional Ollama-backed LLM calls.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/maddwiz/moaa-prime.git
-cd moaa-prime
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip
 python -m pip install -e .
 ```
 
-If you only want local tests and do not need heavy dependencies immediately, use:
+## Commands
+
+Check CLI surface:
 
 ```bash
-python -m pip install -e . --no-deps
+python -m moaa_prime --help
 ```
 
-## Test
-
-```bash
-python -m pytest -q
-```
-
-## CLI
-
-Canonical module entrypoint:
-
-```bash
-python -m moaa_prime "Solve: 2x + 3 = 7. Return only x."
-```
-
-Explicit subcommands:
+Supported commands:
 
 ```bash
 python -m moaa_prime hello
+python -m moaa_prime "Solve: 2x + 3 = 7. Return only x."   # shorthand = route
 python -m moaa_prime route "Write Python: function add(a,b) returns a+b"
 python -m moaa_prime swarm "Explain why 1/0 is undefined."
 ```
@@ -55,7 +34,31 @@ Console script (after install):
 moaa-prime route "2+2?"
 ```
 
+Run tests:
+
+```bash
+python -m pytest -q
+```
+
+## Environment Variables
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `MOAA_LLM_PROVIDER` | `stub` | `stub` or `ollama` |
+| `MOAA_OLLAMA_HOST` | `http://127.0.0.1:11434` | Used when provider is `ollama` |
+| `MOAA_OLLAMA_MODEL` | `llama3.1:8b-instruct` | Used when provider is `ollama` |
+
+Example (Ollama):
+
+```bash
+export MOAA_LLM_PROVIDER=ollama
+export MOAA_OLLAMA_HOST="http://127.0.0.1:11434"
+export MOAA_OLLAMA_MODEL="llama3.1:8b-instruct"
+```
+
 ## Demo Bundle
+
+Run in this order:
 
 ```bash
 python scripts/demo_run.py
@@ -64,25 +67,20 @@ python scripts/eval_run.py
 python scripts/render_report.py
 ```
 
-Generated files:
+Expected outputs:
 
 - `reports/demo_run.json`
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/final_report.json`
 
-`reports/` is generated output and is gitignored.
+`reports/` is generated output and should stay untracked.
 
-## Ollama (Optional)
-
-```bash
-export MOAA_LLM_PROVIDER=ollama
-export MOAA_OLLAMA_HOST="http://127.0.0.1:11434"
-export MOAA_OLLAMA_MODEL="llama3.1:8b-instruct-q4_K_M"
-```
-
-Sanity check:
+## Codex Swarm (Optional)
 
 ```bash
-curl -s http://127.0.0.1:11434/api/tags | head
+./scripts/run_swarm_cycle.sh
+./scripts/run_swarm_cycle.sh .codex/prompts/cycle-001.md
 ```
+
+Artifacts are written to `.codex/runs/` as `*.log` and `*.final.txt`.

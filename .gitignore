@@ -36,3 +36,6 @@ checkpoints/
 
 # Generated demo outputs
 reports/
+
+# Generated Codex swarm run artifacts
+.codex/runs/

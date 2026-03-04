@@ -15,6 +15,16 @@ All notable changes to this repo, by phase.
   - `moaa-prime` via `pyproject.toml`
 - Added `ARCHITECTURE.md`.
 - Replaced stale continuity docs (`README.md`, `MASTER_HANDOFF.md`, `FILEMAP.md`, `DEMO_README.md`) to match real paths and commands.
+- Added autonomous Codex swarm launcher and prompt:
+  - `scripts/run_swarm_cycle.sh`
+  - `.codex/prompts/cycle-001.md`
+  - `.codex/runs/` output location
+- Hardened script execution from plain checkouts by prepending local `src/` in:
+  - `scripts/demo_run.py`
+  - `scripts/bench_run.py`
+  - `scripts/eval_run.py`
+- Made `reports/final_report.json` deterministic by sorting `agents_used`.
+- Fixed `moaa_prime.memory.episodic` back-compat shim to export `Episode` safely.
 
 ## Phase 1 — Packaging + smoke
 - Added src/ layout, minimal app entry, import smoke tests.
