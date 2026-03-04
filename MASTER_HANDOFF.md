@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4)
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -85,6 +85,28 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `trace.swarm.dual_gate` with trigger reasons and selector outcome
     - dual candidate metadata under `candidate.meta.dual_brain` and `candidate.meta.dual_gate`
 
+- PR-5 is implemented:
+  - deterministic eval matrix script:
+    - `scripts/eval_matrix.py` -> `reports/eval_matrix.json`
+  - deterministic PR-5 tests:
+    - `tests/test_pr5_eval_matrix_script.py`
+- PR-5 behavior:
+  - one command emits a stable comparative matrix report covering:
+    - `baseline_single`
+    - `swarm`
+    - `dual_gated`
+    - `tool_first` on/off
+    - `memory` on/off
+    - `sfc` on/off
+  - report schema includes:
+    - mode-level pass rate, latency proxy, tool verification rate, and oracle distribution
+    - `summary` delta blocks with baseline comparisons
+    - per-case diffs for all major ablations
+  - done-gate summary paths now produced directly in `reports/eval_matrix.json`:
+    - `summary.tool_first.pass_rate_delta_vs_baseline`
+    - `summary.swarm.pass_rate_delta_vs_baseline`
+    - `summary.dual_gated.pass_rate_delta_vs_baseline`
+
 ## Cycle 3 Truth (Learning Loop)
 
 Execution modes:
@@ -135,6 +157,7 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/eval_tool_first.py
 .venv/bin/python scripts/eval_compare.py
 .venv/bin/python scripts/eval_dual_gate.py
+.venv/bin/python scripts/eval_matrix.py
 .venv/bin/python scripts/train_router.py
 .venv/bin/python scripts/eval_router.py
 ```
@@ -149,6 +172,12 @@ PR-3 intent trace smoke:
 
 ```bash
 .venv/bin/pytest -q tests/test_pr3_router_intent_trace.py
+```
+
+PR-5 eval matrix smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr5_eval_matrix_script.py
 ```
 
 ## Nonstop Codex Swarm Runbook

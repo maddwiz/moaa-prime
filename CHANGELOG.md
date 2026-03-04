@@ -2,6 +2,31 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003N — PR-5 eval matrix comparative ablations
+- Added deterministic PR-5 eval matrix script:
+  - `scripts/eval_matrix.py` -> `reports/eval_matrix.json`
+- Implemented matrix coverage for required roadmap ablations:
+  - `baseline_single`
+  - `swarm`
+  - `dual_gated`
+  - `tool_first` on/off
+  - `memory` on/off
+  - `sfc` on/off
+- Added stable machine-readable report schema with:
+  - mode-level pass rate, average latency proxy, tool verification rate, and oracle distribution
+  - summary deltas vs baseline blocks
+  - per-case diffs for major comparisons
+- Added deterministic PR-5 script test:
+  - `tests/test_pr5_eval_matrix_script.py`
+  - validates schema stability, deterministic reruns, config coverage, and required done-gate delta paths
+- Latest deterministic eval-matrix summary:
+  - `summary.tool_first.pass_rate_delta_vs_baseline = +0.6666666666666667`
+  - `summary.swarm.pass_rate_delta_vs_baseline = +0.3333333333333333`
+  - `summary.dual_gated.pass_rate_delta_vs_baseline = +0.6666666666666667`
+- Updated continuity docs:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003M — PR-4 gated dual-brain + deterministic best-of selector
 - Added PR-4 duality package:
   - `src/moaa_prime/duality/gated_dual.py`

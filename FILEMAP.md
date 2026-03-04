@@ -59,6 +59,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/eval_tool_first.py`: deterministic PR-1 baseline vs tool-first correctness suite (`reports/tool_first_eval.json`)
 - `scripts/eval_compare.py`: v1-v2 compare report (`reports/eval_compare.json`)
 - `scripts/eval_dual_gate.py`: deterministic PR-4 baseline vs dual-gated comparison (`reports/dual_gated_eval.json`)
+- `scripts/eval_matrix.py`: deterministic PR-5 comparative ablation matrix (`reports/eval_matrix.json`)
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
 - `scripts/render_report.py`: rolls up demo/bench/eval outputs into `reports/final_report.json`
@@ -73,6 +74,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `reports/eval_report.json`
 - `reports/tool_first_eval.json`
 - `reports/dual_gated_eval.json`
+- `reports/eval_matrix.json`
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`
@@ -101,6 +103,9 @@ Roadmap PR-3 tests:
 Roadmap PR-4 tests:
 - `tests/test_pr4_gated_dual.py`
 - `tests/test_pr4_dual_gate_eval_script.py`
+
+Roadmap PR-5 tests:
+- `tests/test_pr5_eval_matrix_script.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`
