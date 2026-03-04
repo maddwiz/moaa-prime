@@ -12,6 +12,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `FILEMAP.md`: this file
 - `CHANGELOG.md`: phase and cycle history
 - `ROADMAP.md`: execution roadmap (PR-0..PR-8) and done definition
+- `CONTRACTS.md`: frozen API/interface contract doc (PR-0)
 - `DEMO_README.md`: demo/bench/eval artifact runbook
 - `pyproject.toml`: package metadata and entry points
 - `pytest.ini`: test path config (`pythonpath = src`)
@@ -75,6 +76,9 @@ This maps the repo so a new context window can re-sync quickly.
 ## Tests
 
 Existing phase tests remain in `tests/test_phase*.py` plus CLI/import tests.
+
+Roadmap PR-0 compatibility tests:
+- `tests/test_pr0_contract_compatibility.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`

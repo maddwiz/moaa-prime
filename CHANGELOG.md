@@ -2,6 +2,18 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003I — PR-0 contract freeze + compatibility assertions
+- Added `CONTRACTS.md` to freeze public contract surfaces for:
+  - router output shape (`MoAAPrime.run_once(...).decision`)
+  - swarm output shape (`MoAAPrime.run_swarm(...)`)
+  - agent interface (`BaseAgent.handle` / `AgentResult`)
+  - memory meta required keys (`local_hits`, `bank_hits`)
+- Added roadmap-ordered PR-0 compatibility tests:
+  - `tests/test_pr0_contract_compatibility.py`
+  - covers `run_once` and `run_swarm` required shapes across `v1`, `v2`, and `v3`
+  - includes direct `BaseAgent.handle` signature and return-shape assertions
+- Preserved API stability policy by enforcing required key/type compatibility while allowing additive fields.
+
 ## Cycle 003H — Roadmap-driven done definition
 - Replaced `ROADMAP.md` (previously empty) with the finish roadmap (PR-0..PR-8) and explicit done definition.
 - Updated `.codex/prompts/autopilot.md` so swarm cycles follow the roadmap in order (PR-0..PR-5 first) and use done-gate status as the only completion signal.

@@ -9,6 +9,21 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
+## Roadmap Status (PR-0)
+
+- PR-0 is implemented:
+  - contract freeze doc: `CONTRACTS.md`
+  - compatibility test suite: `tests/test_pr0_contract_compatibility.py`
+- Frozen contracts now explicitly cover:
+  - router output shape (`run_once(...).decision`)
+  - swarm output shape (`run_swarm(...)`)
+  - agent interface (`BaseAgent.handle` / `AgentResult`)
+  - memory meta required counters (`local_hits`, `bank_hits`)
+- Compatibility policy:
+  - required keys and required-key types are stable
+  - additive fields are allowed
+  - no silent contract removals/type changes
+
 ## Cycle 3 Truth (Learning Loop)
 
 Execution modes:
@@ -23,6 +38,7 @@ Mode controls:
 Architecture docs:
 - `ARCHITECTURE_CYCLE2.md`
 - `ARCHITECTURE_CYCLE3.md`
+- `CONTRACTS.md`
 
 ## Current CLI Truth
 
@@ -58,6 +74,12 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/eval_compare.py
 .venv/bin/python scripts/train_router.py
 .venv/bin/python scripts/eval_router.py
+```
+
+PR-0 compatibility smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr0_contract_compatibility.py
 ```
 
 ## Nonstop Codex Swarm Runbook
