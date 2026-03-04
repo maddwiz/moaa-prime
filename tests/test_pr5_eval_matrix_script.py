@@ -96,11 +96,15 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     matrix = payload_1["matrix"]
     assert isinstance(matrix["runs"], list)
     assert matrix["runs"]
+    run_index = {run["config_id"]: run for run in matrix["runs"]}
 
     for run in matrix["runs"]:
         _assert_run_shape(run)
 
     assert REQUIRED_CONFIG_IDS.issubset(set(matrix["config_ids"]))
+    assert run_index["baseline_single"]["num_cases"] >= 12
+    assert run_index["swarm"]["num_cases"] >= 12
+    assert run_index["dual_gated"]["num_cases"] >= 12
 
     summary = payload_1["summary"]
     assert summary["counts"]["num_runs"] == len(matrix["runs"])
@@ -132,5 +136,10 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
 
     assert compat_tool_1["suite"] == "pr1_tool_first"
     assert compat_tool_1["schema_version"] == "1.1"
+    assert compat_tool_1["num_cases"] == compat_tool_1["counts"]["num_cases"]
+    assert compat_tool_1["scored_cases"] == compat_tool_1["counts"]["scored_cases"]
+    assert compat_tool_1["passed"] == compat_tool_1["counts"]["passed"]
+    assert isinstance(compat_tool_1["pass_rate"], float)
+    assert compat_tool_1["summary"]["counts"] == compat_tool_1["counts"]
     assert compat_tool_1["overall"]["num_cases"] >= compat_tool_1["overall"]["passed"] >= 0
     assert compat_tool_1["overall"]["scored_cases"] == compat_tool_1["overall"]["num_cases"]

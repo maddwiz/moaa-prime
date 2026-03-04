@@ -2,6 +2,37 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 004 — Eval breadth + latency tuning
+- Expanded deterministic eval breadth with a shared core case catalog:
+  - added `src/moaa_prime/eval/cases.py` with required category coverage across:
+    - `math`
+    - `code`
+    - `reasoning`
+    - `safety`
+    - `routing_intent`
+    - `memory_behavior`
+  - increased deterministic core suite size from 6 to 12 cases.
+  - wired both matrix and dual-gate evals to the same shared suite:
+    - `scripts/eval_matrix.py`
+    - `scripts/eval_dual_gate.py`
+- Tuned eval-matrix latency-critical swarm configs with non-regressive intent:
+  - lowered `top_k` for:
+    - `swarm`
+    - `dual_gated`
+  - file: `scripts/eval_matrix.py`
+- Standardized compatibility report schema for matrix-emitted tool-first artifact:
+  - `reports/eval_tool_first.json` now includes additive:
+    - `counts`
+    - top-level `num_cases`, `scored_cases`, `passed`, `pass_rate`
+    - `summary.counts` and `summary.metrics`
+  - file: `scripts/eval_matrix.py`
+- Made final report renderer tolerant to both legacy and standardized eval count shapes:
+  - prefers `counts.num_cases`, falls back to top-level `num_cases`
+  - file: `scripts/render_report.py`
+- Added/updated deterministic tests for the broadened suite and schema compatibility:
+  - `tests/test_pr5_eval_matrix_script.py`
+  - `tests/test_pr4_dual_gate_eval_script.py`
+
 ## Cycle 003T — Final Hardening (Router/Dual/Schema)
 - Hardened RouterV3 behavior:
   - intent-first deterministic guardrail is now primary for high-confidence `math`/`code` intents.

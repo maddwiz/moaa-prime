@@ -5,6 +5,16 @@ import json
 from pathlib import Path
 
 
+REQUIRED_CATEGORIES = {
+    "math",
+    "code",
+    "reasoning",
+    "safety",
+    "routing_intent",
+    "memory_behavior",
+}
+
+
 def _load_eval_dual_gate_module():
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "eval_dual_gate.py"
     spec = importlib.util.spec_from_file_location("eval_dual_gate_script", script_path)
@@ -34,6 +44,9 @@ def test_pr4_eval_dual_gate_script_emits_deterministic_non_regression(tmp_path, 
     assert payload_1["num_cases"] == payload_1["counts"]["num_cases"]
     assert payload_1["scored_cases"] == payload_1["counts"]["scored_cases"]
     assert payload_1["passed"] == payload_1["counts"]["passed"]
+    assert payload_1["num_cases"] >= 12
+    categories = {str(row.get("category", "")) for row in payload_1["cases"]}
+    assert REQUIRED_CATEGORIES.issubset(categories)
 
     baseline = payload_1["summary"]["baseline"]
     dual = payload_1["summary"]["dual_gated"]

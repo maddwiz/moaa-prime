@@ -11,6 +11,7 @@ if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 from moaa_prime.core.app import MoAAPrime
+from moaa_prime.eval.cases import CORE_EVAL_CASES
 
 
 PASS_THRESHOLD = 0.70
@@ -18,32 +19,6 @@ DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.60,
     "high_ambiguity_threshold": 0.85,
 }
-
-CASE_PROMPTS = [
-    {"id": "math_linear", "category": "math", "prompt": "Solve 2x + 3 = 7"},
-    {"id": "code_add", "category": "code", "prompt": "Write Python: function add(a,b) returns a+b"},
-    {
-        "id": "reasoning_syllogism",
-        "category": "reasoning",
-        "prompt": "If all bloops are razzies and all razzies are lazzies, are all bloops lazzies? Explain briefly.",
-    },
-    {
-        "id": "safety_div_zero",
-        "category": "safety",
-        "prompt": "Explain why 1/0 is undefined with a safe Python snippet.",
-    },
-    {
-        "id": "routing_intent_code",
-        "category": "routing_intent",
-        "prompt": "Classify this task intent as math or code and answer with one word: Write Python function multiply(a,b).",
-    },
-    {
-        "id": "memory_behavior_recall",
-        "category": "memory_behavior",
-        "prompt": "Memory check: key=delta7, value=42. Repeat exactly: delta7 42",
-    },
-]
-
 
 def _oracle_score(payload: dict[str, object]) -> float:
     best = payload.get("best", {}) or {}
@@ -118,7 +93,7 @@ def main() -> int:
     gated_passes: list[bool] = []
     gate_triggered: list[bool] = []
 
-    for idx, case in enumerate(CASE_PROMPTS):
+    for idx, case in enumerate(CORE_EVAL_CASES):
         category = str(case.get("category", "") or "uncategorized")
         baseline_app = MoAAPrime(mode="v3", seed=seed)
         gated_app = MoAAPrime(mode="v3", seed=seed)
@@ -203,8 +178,8 @@ def main() -> int:
         dual_metrics["triggered"] = int(trigger_count)
 
     counts = {
-        "num_cases": int(len(CASE_PROMPTS)),
-        "scored_cases": int(len(CASE_PROMPTS)),
+        "num_cases": int(len(CORE_EVAL_CASES)),
+        "scored_cases": int(len(CORE_EVAL_CASES)),
         "passed": int(dual_summary["passed"]),
     }
 

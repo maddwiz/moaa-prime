@@ -110,6 +110,13 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary` delta blocks with baseline comparisons
     - per-case diffs for all major ablations
     - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
+  - deterministic core coverage now runs from a shared 12-case catalog:
+    - `src/moaa_prime/eval/cases.py`
+    - consumed by:
+      - `scripts/eval_matrix.py`
+      - `scripts/eval_dual_gate.py`
+  - latency-tuned eval defaults for comparative modes:
+    - `swarm` and `dual_gated` matrix configs run with `top_k=1` (reduced fan-out latency proxy)
   - done-gate summary paths now produced directly in `reports/eval_matrix.json`:
     - `summary.tool_first.pass_rate_delta_vs_baseline`
     - `summary.swarm.pass_rate_delta_vs_baseline`

@@ -14,6 +14,7 @@ if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
 
 from moaa_prime.agents.base import BaseAgent
 from moaa_prime.core.app import MoAAPrime
+from moaa_prime.eval.cases import CATEGORY_ORDER, CORE_EVAL_CASES
 from moaa_prime.policy.tool_first import (
     extract_python_source,
     run_code_tool_first,
@@ -28,47 +29,6 @@ DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.60,
     "high_ambiguity_threshold": 0.85,
 }
-CATEGORY_ORDER: tuple[str, ...] = (
-    "math",
-    "code",
-    "reasoning",
-    "safety",
-    "routing_intent",
-    "memory_behavior",
-)
-
-CORE_CASES: list[dict[str, str]] = [
-    {
-        "id": "math_linear",
-        "category": "math",
-        "prompt": "Solve 2x + 3 = 7",
-    },
-    {
-        "id": "code_add",
-        "category": "code",
-        "prompt": "Write Python: function add(a,b) returns a+b",
-    },
-    {
-        "id": "reasoning_syllogism",
-        "category": "reasoning",
-        "prompt": "If all bloops are razzies and all razzies are lazzies, are all bloops lazzies? Explain briefly.",
-    },
-    {
-        "id": "safety_div_zero",
-        "category": "safety",
-        "prompt": "Explain why 1/0 is undefined with a safe Python snippet.",
-    },
-    {
-        "id": "routing_intent_code",
-        "category": "routing_intent",
-        "prompt": "Classify this task intent as math or code and answer with one word: Write Python function multiply(a,b).",
-    },
-    {
-        "id": "memory_behavior_recall",
-        "category": "memory_behavior",
-        "prompt": "Memory check: key=delta7, value=42. Repeat exactly: delta7 42",
-    },
-]
 
 TOOL_MATH_CASES = [
     {"id": "math_linear", "category": "math", "prompt": "Solve 3*x + 1 = 13 for x", "expected": {"4"}},
@@ -114,13 +74,13 @@ class MatrixConfig:
 
 CORE_CONFIGS: list[MatrixConfig] = [
     MatrixConfig(config_id="baseline_single", suite="core", strategy="once"),
-    MatrixConfig(config_id="swarm", suite="core", strategy="swarm", rounds=1, top_k=2),
+    MatrixConfig(config_id="swarm", suite="core", strategy="swarm", rounds=1, top_k=1),
     MatrixConfig(
         config_id="dual_gated",
         suite="core",
         strategy="swarm",
         rounds=1,
-        top_k=2,
+        top_k=1,
         dual_gate_enabled=True,
     ),
     MatrixConfig(
@@ -372,7 +332,7 @@ def _run_swarm_with_sfc(
 def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: float) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
 
-    for idx, case in enumerate(CORE_CASES):
+    for idx, case in enumerate(CORE_EVAL_CASES):
         case_id = str(case["id"])
         category = str(case.get("category", "") or "uncategorized")
         prompt = str(case["prompt"])
@@ -843,13 +803,52 @@ def _tool_first_compat_payload(*, baseline_run: Mapping[str, Any], tool_run: Map
     math_rows = [row for row in compat_rows if row.get("category") == "math"]
     code_rows = [row for row in compat_rows if row.get("category") == "code"]
     overall_rows = list(compat_rows)
+    math_block = _tool_first_category_block(math_rows)
+    code_block = _tool_first_category_block(code_rows)
+    overall_block = _tool_first_category_block(overall_rows)
+    counts = {
+        "num_cases": int(overall_block["num_cases"]),
+        "scored_cases": int(overall_block["scored_cases"]),
+        "passed": int(overall_block["passed"]),
+    }
 
     return {
         "suite": "pr1_tool_first",
         "schema_version": "1.1",
-        "math": _tool_first_category_block(math_rows),
-        "code": _tool_first_category_block(code_rows),
-        "overall": _tool_first_category_block(overall_rows),
+        "counts": counts,
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
+        "pass_rate": float(overall_block["tool_first_pass_rate"]),
+        "summary": {
+            "counts": counts,
+            "metrics": {
+                "baseline_pass_rate": float(overall_block["baseline_pass_rate"]),
+                "tool_first_pass_rate": float(overall_block["tool_first_pass_rate"]),
+                "pass_rate_delta": float(overall_block["pass_rate_delta"]),
+            },
+            "categories": {
+                "math": {
+                    "num_cases": int(math_block["num_cases"]),
+                    "scored_cases": int(math_block["scored_cases"]),
+                    "passed": int(math_block["passed"]),
+                    "baseline_pass_rate": float(math_block["baseline_pass_rate"]),
+                    "tool_first_pass_rate": float(math_block["tool_first_pass_rate"]),
+                    "pass_rate_delta": float(math_block["pass_rate_delta"]),
+                },
+                "code": {
+                    "num_cases": int(code_block["num_cases"]),
+                    "scored_cases": int(code_block["scored_cases"]),
+                    "passed": int(code_block["passed"]),
+                    "baseline_pass_rate": float(code_block["baseline_pass_rate"]),
+                    "tool_first_pass_rate": float(code_block["tool_first_pass_rate"]),
+                    "pass_rate_delta": float(code_block["pass_rate_delta"]),
+                },
+            },
+        },
+        "math": math_block,
+        "code": code_block,
+        "overall": overall_block,
     }
 
 
