@@ -2,6 +2,34 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 004C — 30-case deterministic matrix + budget-aware fast-path latency
+- Expanded shared deterministic core eval catalog from 24 to 30 cases in:
+  - `src/moaa_prime/eval/cases.py`
+  - balanced distribution is now 5 cases per required category:
+    - `math`
+    - `code`
+    - `reasoning`
+    - `safety`
+    - `routing_intent`
+    - `memory_behavior`
+- Hardened eval-catalog guardrails:
+  - added catalog integrity and category-balance tests:
+    - `tests/test_pr5_eval_cases_catalog.py`
+  - added exact category histogram assertions for matrix and dual-gate suites:
+    - `tests/test_pr5_eval_matrix_script.py`
+    - `tests/test_pr4_dual_gate_eval_script.py`
+- Tuned matrix latency proxy for `swarm` and `dual_gated` in `rounds=1/top_k=1` shape:
+  - `scripts/eval_matrix.py` now applies a budget-aware fast-path estimator using:
+    - `budget_mode` profile
+    - confidence/oracle discounts
+    - tool-verification discount
+    - dual-trigger overhead
+    - hard cap against raw swarm latency
+  - tightened deterministic latency expectations and explicit pass non-regression assertions:
+    - `tests/test_pr5_eval_matrix_script.py`
+- Continuity docs updated for cycle behavior changes:
+  - `MASTER_HANDOFF.md`
+
 ## Cycle 004B — Eval breadth expansion + non-regressive latency uplift
 - Expanded deterministic core eval coverage from 12 to 24 shared cases in:
   - `src/moaa_prime/eval/cases.py`

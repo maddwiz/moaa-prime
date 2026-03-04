@@ -110,7 +110,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary` delta blocks with baseline comparisons
     - per-case diffs for all major ablations
     - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
-  - deterministic core coverage now runs from a shared 24-case catalog:
+  - deterministic core coverage now runs from a shared 30-case catalog:
     - `src/moaa_prime/eval/cases.py`
     - consumed by:
       - `scripts/eval_matrix.py`
@@ -121,7 +121,9 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
       - `budget_mode="cheap"`
       - `rounds=1`
       - `top_k=1`
-    - `scripts/eval_matrix.py` applies a deterministic single-candidate latency fast-path proxy in this exact `rounds=1/top_k=1` shape.
+    - `scripts/eval_matrix.py` applies a deterministic budget-aware single-candidate latency fast-path proxy in this exact `rounds=1/top_k=1` shape.
+      - fast-path tuning uses budget profile + confidence/oracle + verification/dual-gate signals.
+      - raw swarm latency remains an upper bound for the derived fast-path proxy.
   - matrix top-level schema now includes explicit count fields:
     - `num_cases`
     - `scored_cases`

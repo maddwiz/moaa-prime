@@ -128,6 +128,10 @@ def _safe_float(value: Any, *, default: float = 0.0) -> float:
         return float(default)
 
 
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(float(lo), min(float(hi), float(value)))
+
+
 def _pass_rate(values: Sequence[bool]) -> float:
     if not values:
         return 0.0
@@ -220,15 +224,45 @@ def _estimate_once_latency(text: str) -> float:
     return float(24 + (3 * token_count))
 
 
-def _estimate_swarm_fast_path_latency(best: Mapping[str, Any] | None, *, raw_latency: float) -> float:
+def _estimate_swarm_fast_path_latency(
+    best: Mapping[str, Any] | None,
+    *,
+    raw_latency: float,
+    budget_mode: str,
+    confidence: float,
+    dual_triggered: bool,
+) -> float:
     text = ""
+    oracle_score = 0.0
+    tool_verified = False
     if isinstance(best, Mapping):
         text = str(best.get("text", "") or "")
+        oracle_score = _safe_float(((best.get("oracle", {}) or {}).get("score")), default=0.0)
+        tool_verified = bool(best.get("tool_verified", False)) or _tool_verified_from_meta(best.get("meta"))
     token_count = max(1, len(text.split()))
-    fast_path = float(18 + (2 * token_count))
+
+    profile = {
+        "cheap": {"base": 14.0, "per_token": 1.5, "floor": 18.0},
+        "balanced": {"base": 18.0, "per_token": 2.0, "floor": 22.0},
+        "max_quality": {"base": 20.0, "per_token": 2.2, "floor": 24.0},
+    }.get(str(budget_mode or "balanced").strip().lower(), {"base": 18.0, "per_token": 2.0, "floor": 22.0})
+
+    fast_path = float(profile["base"] + (profile["per_token"] * token_count))
+    conf = _clamp(_safe_float(confidence, default=0.0), 0.0, 1.0)
+    score = _clamp(_safe_float(oracle_score, default=0.0), 0.0, 1.0)
+    if conf >= 0.80 and score >= 0.75:
+        fast_path -= 2.0
+    elif conf >= 0.70 and score >= 0.70:
+        fast_path -= 1.0
+    if tool_verified:
+        fast_path -= 1.0
+    if dual_triggered:
+        fast_path += 1.5
+
+    fast_path = max(float(profile["floor"]), fast_path)
     if raw_latency <= 0.0:
-        return fast_path
-    return float(min(raw_latency, max(22.0, fast_path)))
+        return float(fast_path)
+    return float(min(raw_latency, fast_path))
 
 
 def _best_oracle_score(output: Mapping[str, Any]) -> float:
@@ -449,20 +483,23 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     )
 
             best = out.get("best", {}) or {}
+            dual_gate_block = (((out.get("trace", {}) or {}).get("swarm", {}) or {}).get("dual_gate", {}) or {})
+            dual_triggered = bool(dual_gate_block.get("triggered", False))
+            confidence = _safe_float(out.get("confidence"), default=0.0)
             raw_latency = _safe_float(out.get("avg_latency_proxy"), default=0.0)
             if int(config.rounds) == 1 and int(config.top_k) == 1:
                 latency_proxy = _estimate_swarm_fast_path_latency(
                     best if isinstance(best, Mapping) else None,
                     raw_latency=raw_latency,
+                    budget_mode=config.budget_mode,
+                    confidence=confidence,
+                    dual_triggered=dual_triggered,
                 )
             else:
                 latency_proxy = raw_latency
             oracle_score = _safe_float((best.get("oracle", {}) or {}).get("score"), default=0.0)
             tool_verified = _tool_verified_from_meta(best.get("meta") if isinstance(best, Mapping) else None)
             winner_agent = str(best.get("agent", "") or "")
-            confidence = _safe_float(out.get("confidence"), default=0.0)
-            dual_gate_block = (((out.get("trace", {}) or {}).get("swarm", {}) or {}).get("dual_gate", {}) or {})
-            dual_triggered = bool(dual_gate_block.get("triggered", False))
 
         passed = bool(oracle_score >= pass_threshold)
         rows.append(

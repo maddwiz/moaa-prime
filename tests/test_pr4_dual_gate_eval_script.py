@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from collections import Counter
 from pathlib import Path
 
 from moaa_prime.eval.cases import CORE_EVAL_CASES
@@ -49,6 +50,9 @@ def test_pr4_eval_dual_gate_script_emits_deterministic_non_regression(tmp_path, 
     assert payload_1["num_cases"] == len(CORE_EVAL_CASES)
     categories = {str(row.get("category", "")) for row in payload_1["cases"]}
     assert REQUIRED_CATEGORIES.issubset(categories)
+    expected_counts = Counter(str(row["category"]) for row in CORE_EVAL_CASES)
+    observed_counts = Counter(str(row.get("category", "")) for row in payload_1["cases"])
+    assert observed_counts == expected_counts
 
     baseline = payload_1["summary"]["baseline"]
     dual = payload_1["summary"]["dual_gated"]

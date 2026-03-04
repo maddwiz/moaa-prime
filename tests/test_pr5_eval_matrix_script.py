@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from collections import Counter
 from pathlib import Path
 
 from moaa_prime.eval.cases import CORE_EVAL_CASES
@@ -109,11 +110,21 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
 
     assert REQUIRED_CONFIG_IDS.issubset(set(matrix["config_ids"]))
     expected_case_count = len(CORE_EVAL_CASES)
+    expected_category_counts = Counter(str(case["category"]) for case in CORE_EVAL_CASES)
     assert run_index["baseline_single"]["num_cases"] == expected_case_count
     assert run_index["swarm"]["num_cases"] == expected_case_count
     assert run_index["dual_gated"]["num_cases"] == expected_case_count
-    assert run_index["swarm"]["avg_latency_proxy"] < 61.3335
-    assert run_index["dual_gated"]["avg_latency_proxy"] < 61.3335
+    for config_id in ("baseline_single", "swarm", "dual_gated"):
+        observed = {
+            category: int(block.get("num_cases", 0))
+            for category, block in run_index[config_id]["category_summary"].items()
+            if int(block.get("num_cases", 0)) > 0
+        }
+        assert observed == dict(expected_category_counts)
+    assert run_index["swarm"]["avg_latency_proxy"] < 50.0
+    assert run_index["dual_gated"]["avg_latency_proxy"] < 50.0
+    assert run_index["swarm"]["pass_rate"] >= run_index["baseline_single"]["pass_rate"]
+    assert run_index["dual_gated"]["pass_rate"] >= run_index["swarm"]["pass_rate"]
     dual_trigger_flags = [bool(row.get("dual_triggered", False)) for row in run_index["dual_gated"]["cases"]]
     assert not all(dual_trigger_flags)
 
