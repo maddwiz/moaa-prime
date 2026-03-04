@@ -15,6 +15,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `pyproject.toml`: package metadata and entry points
 - `pytest.ini`: test path config (`pythonpath = src`)
 - `.codex/prompts/autopilot.md`: default continuous swarm mission prompt
+- `.codex/done_criteria.json`: machine-checkable done criteria for swarm auto-stop
 - `scripts/`: runnable demo + benchmark + eval + train scripts
 - `src/moaa_prime/`: implementation
 - `tests/`: test suite
@@ -53,6 +54,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
 - `scripts/render_report.py`: rolls up demo/bench/eval outputs into `reports/final_report.json`
+- `scripts/check_done.py`: evaluates done criteria and writes done-check report
 - `scripts/run_swarm_cycle.sh`: single swarm cycle launcher with prompt input
 - `scripts/swarm_autopilot.sh`: nonstop swarm daemon (start/stop/status/tail)
 

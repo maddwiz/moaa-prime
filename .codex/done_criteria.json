@@ -1,0 +1,41 @@
+{
+  "require_clean_worktree": true,
+  "required_files": [
+    "reports/eval_compare.json",
+    "reports/eval_router.json",
+    "reports/router_train_report.json",
+    "reports/eval_report.json",
+    "models/router_v3.pt",
+    "datasets/router_training.jsonl"
+  ],
+  "checks": [
+    {
+      "name": "v3_win_rate_over_v2",
+      "file": "reports/eval_compare.json",
+      "path": "win_rate_candidate_over_baseline",
+      "op": "ge",
+      "value": 0.25
+    },
+    {
+      "name": "v3_routing_accuracy",
+      "file": "reports/eval_router.json",
+      "path": "routing_accuracy.v3",
+      "op": "ge",
+      "value": 0.8
+    },
+    {
+      "name": "router_train_accuracy",
+      "file": "reports/router_train_report.json",
+      "path": "training_accuracy",
+      "op": "ge",
+      "value": 0.75
+    },
+    {
+      "name": "router_train_ece",
+      "file": "reports/router_train_report.json",
+      "path": "training_ece",
+      "op": "le",
+      "value": 0.1
+    }
+  ]
+}

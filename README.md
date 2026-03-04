@@ -122,6 +122,7 @@ Autopilot state is stored in `.codex/runs/autopilot/`:
 - `status.env`
 - `cycles.tsv`
 - `active_prompt.md`
+- `done_check.json`
 
 Useful environment controls:
 - `SWARM_AUTOPILOT_SLEEP_SECONDS=10` (delay between cycles)
@@ -132,9 +133,24 @@ Useful environment controls:
 - `SWARM_AUTOPILOT_TMUX_SESSION=moaa-prime-swarm-autopilot`
 - `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
 - `SWARM_AUTOPILOT_AUTOPUSH=0|1`
+- `SWARM_AUTOPILOT_DONE_CHECK_ENABLED=0|1`
+- `SWARM_AUTOPILOT_DONE_CHECK_SCRIPT=scripts/check_done.py`
+- `SWARM_AUTOPILOT_DONE_CRITERIA=.codex/done_criteria.json`
+- `SWARM_AUTOPILOT_DONE_REPORT=.codex/runs/autopilot/done_check.json`
 
 Example with explicit daemon settings:
 
 ```bash
-SWARM_AUTOPILOT_AUTOCOMMIT=1 SWARM_AUTOPILOT_VALIDATE_MODE=quick ./scripts/swarm_autopilot.sh start
+SWARM_AUTOPILOT_AUTOCOMMIT=1 SWARM_AUTOPILOT_AUTOPUSH=1 SWARM_AUTOPILOT_VALIDATE_MODE=quick ./scripts/swarm_autopilot.sh start
+```
+
+Definition of done:
+- Criteria live in `.codex/done_criteria.json`.
+- On each successful cycle, autopilot runs `scripts/check_done.py`.
+- When criteria are met, cycle status becomes `done` and the loop exits automatically.
+
+Run done-check manually:
+
+```bash
+python3 scripts/check_done.py --criteria .codex/done_criteria.json --report .codex/runs/autopilot/done_check.json
 ```

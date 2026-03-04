@@ -2,6 +2,23 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003F — Autopilot done-gate + GitHub sync reliability
+- Added machine-checkable done criteria file: `.codex/done_criteria.json`.
+- Added done evaluator script: `scripts/check_done.py`.
+  - evaluates required artifacts and metric thresholds
+  - writes JSON report to `.codex/runs/autopilot/done_check.json`
+  - exits `0` when done criteria are met and `10` when not met
+- Upgraded `scripts/swarm_autopilot.sh`:
+  - runs done-check after each successful cycle
+  - marks cycle `status=done` and auto-stops when criteria are met
+  - records `done_result` and `done_exit` in `status.env`
+  - improved auto-push logic to push any ahead commits (including swarm-authored commits)
+  - routes git command output away from cycle status parsing to keep summary records clean
+- Updated continuity docs for done-gate controls and runbook:
+  - `README.md`
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003E — RouterV3 calibration binary-support gate increment
 - Strengthened RouterV3 calibration gating robustness in `src/moaa_prime/router/training.py`:
   - calibration is skipped (identity retained) when calibration-train or calibration-validation lacks binary label support

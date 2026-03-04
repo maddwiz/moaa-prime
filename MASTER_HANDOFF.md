@@ -86,6 +86,12 @@ Autopilot artifacts:
 - `.codex/runs/autopilot/status.env`
 - `.codex/runs/autopilot/cycles.tsv`
 - `.codex/runs/autopilot/active_prompt.md`
+- `.codex/runs/autopilot/done_check.json`
+
+Done gate:
+- criteria file: `.codex/done_criteria.json`
+- evaluator script: `scripts/check_done.py`
+- behavior: each successful cycle evaluates done criteria; if met, status becomes `done` and daemon exits.
 
 Primary artifacts:
 - `reports/demo_run.json`
@@ -166,6 +172,10 @@ Swarm autopilot controls:
 - `SWARM_AUTOPILOT_TMUX_SESSION`
 - `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
 - `SWARM_AUTOPILOT_AUTOPUSH=0|1`
+- `SWARM_AUTOPILOT_DONE_CHECK_ENABLED=0|1`
+- `SWARM_AUTOPILOT_DONE_CHECK_SCRIPT`
+- `SWARM_AUTOPILOT_DONE_CRITERIA`
+- `SWARM_AUTOPILOT_DONE_REPORT`
 
 Ollama example:
 

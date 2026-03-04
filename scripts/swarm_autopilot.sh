@@ -27,6 +27,10 @@ VALIDATE_MODE="${SWARM_AUTOPILOT_VALIDATE_MODE:-auto}" # auto|quick|full|none
 SINGLE_CYCLE="${SWARM_AUTOPILOT_SINGLE_CYCLE:-0}"
 DAEMON_MODE="${SWARM_AUTOPILOT_DAEMON_MODE:-auto}" # auto|tmux|nohup
 TMUX_SESSION="${SWARM_AUTOPILOT_TMUX_SESSION:-moaa-prime-swarm-autopilot}"
+DONE_CHECK_ENABLED="${SWARM_AUTOPILOT_DONE_CHECK_ENABLED:-1}"
+DONE_CHECK_SCRIPT="${SWARM_AUTOPILOT_DONE_CHECK_SCRIPT:-$ROOT_DIR/scripts/check_done.py}"
+DONE_CHECK_CRITERIA="${SWARM_AUTOPILOT_DONE_CRITERIA:-$ROOT_DIR/.codex/done_criteria.json}"
+DONE_CHECK_REPORT="${SWARM_AUTOPILOT_DONE_REPORT:-$STATE_DIR/done_check.json}"
 
 usage() {
   cat <<'EOF'
@@ -47,6 +51,10 @@ Environment:
   SWARM_AUTOPILOT_TMUX_SESSION=moaa-prime-swarm-autopilot
   SWARM_AUTOPILOT_AUTOCOMMIT=0|1
   SWARM_AUTOPILOT_AUTOPUSH=0|1
+  SWARM_AUTOPILOT_DONE_CHECK_ENABLED=0|1
+  SWARM_AUTOPILOT_DONE_CHECK_SCRIPT=scripts/check_done.py
+  SWARM_AUTOPILOT_DONE_CRITERIA=.codex/done_criteria.json
+  SWARM_AUTOPILOT_DONE_REPORT=.codex/runs/autopilot/done_check.json
   SWARM_AUTOPILOT_BRANCH_PREFIX=codex/
 EOF
 }
@@ -109,6 +117,8 @@ write_status() {
   local head_before="$7"
   local head_after="$8"
   local duration="$9"
+  local done_result="${10:-not_checked}"
+  local done_exit="${11:-11}"
 
   cat > "$STATUS_FILE" <<EOF
 updated_at=$(timestamp)
@@ -121,6 +131,8 @@ prompt_source=$prompt_source
 head_before=$head_before
 head_after=$head_after
 duration_sec=$duration
+done_result=$done_result
+done_exit=$done_exit
 EOF
 }
 
@@ -232,6 +244,29 @@ run_validation() {
   esac
 }
 
+run_done_check() {
+  local python_bin
+  python_bin="$(resolve_python_bin)"
+
+  if [[ "$DONE_CHECK_ENABLED" != "1" ]]; then
+    return 11
+  fi
+
+  if [[ ! -f "$DONE_CHECK_SCRIPT" ]]; then
+    echo "Done-check script not found: $DONE_CHECK_SCRIPT" >&2
+    return 12
+  fi
+
+  if [[ ! -f "$DONE_CHECK_CRITERIA" ]]; then
+    echo "Done-check criteria not found: $DONE_CHECK_CRITERIA" >&2
+    return 13
+  fi
+
+  "$python_bin" "$DONE_CHECK_SCRIPT" \
+    --criteria "$DONE_CHECK_CRITERIA" \
+    --report "$DONE_CHECK_REPORT"
+}
+
 maybe_autocommit_and_push() {
   local cycle="$1"
   local commit_status="skipped"
@@ -239,8 +274,8 @@ maybe_autocommit_and_push() {
 
   if [[ "$AUTOCOMMIT" == "1" ]]; then
     if [[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]]; then
-      git -C "$ROOT_DIR" add -A
-      git -C "$ROOT_DIR" commit -m "swarm: autopilot cycle ${cycle} checkpoint"
+      git -C "$ROOT_DIR" add -A >&2
+      git -C "$ROOT_DIR" commit -m "swarm: autopilot cycle ${cycle} checkpoint" >&2
       commit_status="ok"
     else
       commit_status="no_changes"
@@ -254,7 +289,7 @@ maybe_autocommit_and_push() {
     if git -C "$ROOT_DIR" rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
       ahead="$(git -C "$ROOT_DIR" rev-list --count "@{u}..HEAD")"
       if (( ahead > 0 )); then
-        if git -C "$ROOT_DIR" push; then
+        if git -C "$ROOT_DIR" push >&2; then
           push_status="ok"
         else
           push_status="failed"
@@ -264,7 +299,7 @@ maybe_autocommit_and_push() {
       fi
     else
       # First push for a new branch: set upstream automatically.
-      if git -C "$ROOT_DIR" push -u origin "$branch"; then
+      if git -C "$ROOT_DIR" push -u origin "$branch" >&2; then
         push_status="ok_upstream"
       else
         push_status="failed_no_upstream"
@@ -308,7 +343,7 @@ run_loop() {
     printf "%s\n" "$(timestamp)" > "$HEARTBEAT_FILE"
 
     local started_at started_epoch prompt_source head_before head_after swarm_exit validate_exit status duration
-    local auto_pair auto_commit auto_push
+    local auto_pair auto_commit auto_push done_result done_exit
     started_at="$(timestamp)"
     started_epoch="$(date +%s)"
     head_before="$(git -C "$ROOT_DIR" rev-parse HEAD)"
@@ -334,26 +369,60 @@ run_loop() {
 
     auto_commit="skipped"
     auto_push="skipped"
+    done_result="not_checked"
+    done_exit=11
     if [[ "$swarm_exit" -eq 0 && "$validate_exit" -eq 0 ]]; then
       auto_pair="$(maybe_autocommit_and_push "$cycle")"
       auto_commit="${auto_pair%%|*}"
       auto_push="${auto_pair##*|}"
-      status="ok"
-      failure_streak=0
+      set +e
+      run_done_check
+      done_exit=$?
+      set -e
+
+      case "$done_exit" in
+        0)
+          done_result="met"
+          status="done"
+          failure_streak=0
+          ;;
+        10)
+          done_result="not_met"
+          status="ok"
+          failure_streak=0
+          ;;
+        11)
+          done_result="skipped"
+          status="ok"
+          failure_streak=0
+          ;;
+        *)
+          done_result="error"
+          status="failed"
+          failure_streak=$((failure_streak + 1))
+          ;;
+      esac
     else
       status="failed"
       failure_streak=$((failure_streak + 1))
+      done_result="blocked"
+      done_exit=98
     fi
 
     head_after="$(git -C "$ROOT_DIR" rev-parse HEAD)"
     duration="$(( $(date +%s) - started_epoch ))"
 
-    write_status "$cycle" "$status" "$swarm_exit" "$validate_exit" "$failure_streak" "$prompt_source" "$head_before" "$head_after" "$duration"
+    write_status "$cycle" "$status" "$swarm_exit" "$validate_exit" "$failure_streak" "$prompt_source" "$head_before" "$head_after" "$duration" "$done_result" "$done_exit"
 
     printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
       "$started_at" "$cycle" "$status" "$swarm_exit" "$validate_exit" "$auto_commit" "$auto_push" "$duration" "$head_before" "$head_after" "$prompt_source" >> "$SUMMARY_FILE"
 
-    echo "[$(timestamp)] Cycle $cycle finished: status=$status swarm_exit=$swarm_exit validate_exit=$validate_exit"
+    echo "[$(timestamp)] Cycle $cycle finished: status=$status swarm_exit=$swarm_exit validate_exit=$validate_exit done_result=$done_result done_exit=$done_exit"
+
+    if [[ "$status" == "done" ]]; then
+      echo "Done criteria met. Stopping autopilot loop."
+      break
+    fi
 
     if [[ "$single_cycle" == "1" ]]; then
       echo "Single-cycle mode enabled, exiting loop."
@@ -410,7 +479,7 @@ start_daemon() {
       fi
 
       local tmux_cmd
-      tmux_cmd="$(printf "cd %q && SWARM_AUTOPILOT_SLEEP_SECONDS=%q SWARM_AUTOPILOT_FULL_VALIDATE_EVERY=%q SWARM_AUTOPILOT_MAX_FAILURE_STREAK=%q SWARM_AUTOPILOT_VALIDATE_MODE=%q SWARM_AUTOPILOT_AUTOCOMMIT=%q SWARM_AUTOPILOT_AUTOPUSH=%q SWARM_AUTOPILOT_BRANCH_PREFIX=%q %q run %q %q >> %q 2>&1" \
+      tmux_cmd="$(printf "cd %q && SWARM_AUTOPILOT_SLEEP_SECONDS=%q SWARM_AUTOPILOT_FULL_VALIDATE_EVERY=%q SWARM_AUTOPILOT_MAX_FAILURE_STREAK=%q SWARM_AUTOPILOT_VALIDATE_MODE=%q SWARM_AUTOPILOT_AUTOCOMMIT=%q SWARM_AUTOPILOT_AUTOPUSH=%q SWARM_AUTOPILOT_DONE_CHECK_ENABLED=%q SWARM_AUTOPILOT_DONE_CHECK_SCRIPT=%q SWARM_AUTOPILOT_DONE_CRITERIA=%q SWARM_AUTOPILOT_DONE_REPORT=%q SWARM_AUTOPILOT_BRANCH_PREFIX=%q %q run %q %q >> %q 2>&1" \
         "$ROOT_DIR" \
         "$SLEEP_SECONDS" \
         "$FULL_VALIDATE_EVERY" \
@@ -418,6 +487,10 @@ start_daemon() {
         "$VALIDATE_MODE" \
         "$AUTOCOMMIT" \
         "$AUTOPUSH" \
+        "$DONE_CHECK_ENABLED" \
+        "$DONE_CHECK_SCRIPT" \
+        "$DONE_CHECK_CRITERIA" \
+        "$DONE_CHECK_REPORT" \
         "$BRANCH_PREFIX" \
         "$0" \
         "$base_prompt" \
