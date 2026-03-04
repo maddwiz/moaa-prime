@@ -449,8 +449,6 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
             confidence = _safe_float(out.get("confidence"), default=0.0)
             dual_gate_block = (((out.get("trace", {}) or {}).get("swarm", {}) or {}).get("dual_gate", {}) or {})
             dual_triggered = bool(dual_gate_block.get("triggered", False))
-            if config.dual_gate_enabled and not isinstance(dual_gate_block, Mapping):
-                dual_triggered = False
 
         passed = bool(oracle_score >= pass_threshold)
         rows.append(
