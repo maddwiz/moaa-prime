@@ -1,4 +1,13 @@
-from moaa_prime.router.training import records_to_examples, train_router_v3_model
+import math
+
+from moaa_prime.router.router_v3 import RouterV3Model
+from moaa_prime.router.training import (
+    RouterTrainingExample,
+    evaluate_brier_score,
+    evaluate_expected_calibration_error,
+    records_to_examples,
+    train_router_v3_model,
+)
 
 
 def _records():
@@ -74,3 +83,61 @@ def test_router_training_is_deterministic_for_seed():
 
     assert model_a.bias == model_b.bias
     assert model_a.weights == model_b.weights
+    assert model_a.calibration_scale == model_b.calibration_scale
+    assert model_a.calibration_bias == model_b.calibration_bias
+
+
+def test_router_training_supports_deterministic_calibration_toggle():
+    examples = records_to_examples(_records(), seed=21)
+
+    model_uncalibrated = train_router_v3_model(examples, seed=21, epochs=100, fit_calibration=False)
+    model_calibrated = train_router_v3_model(examples, seed=21, epochs=100, fit_calibration=True)
+
+    assert model_uncalibrated.calibration_scale == 1.0
+    assert model_uncalibrated.calibration_bias == 0.0
+    assert model_calibrated.calibration_scale != 0.0
+    calibrated_repeat = train_router_v3_model(
+        examples,
+        seed=21,
+        epochs=100,
+        fit_calibration=True,
+    )
+    assert model_calibrated.calibration_scale == calibrated_repeat.calibration_scale
+    assert model_calibrated.calibration_bias == calibrated_repeat.calibration_bias
+
+
+def test_router_training_metrics_brier_and_ece():
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 6.0},
+        bias=-3.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=0,
+    )
+    examples = [
+        RouterTrainingExample(
+            run_id="r1",
+            prompt="p1",
+            agent_name="a0",
+            budget_mode="balanced",
+            features={"similarity": 0.0},
+            label=0.0,
+        ),
+        RouterTrainingExample(
+            run_id="r1",
+            prompt="p1",
+            agent_name="a1",
+            budget_mode="balanced",
+            features={"similarity": 1.0},
+            label=1.0,
+        ),
+    ]
+
+    p0 = 1.0 / (1.0 + math.exp(3.0))
+    p1 = 1.0 / (1.0 + math.exp(-3.0))
+    expected_brier = (((p0 - 0.0) ** 2) + ((p1 - 1.0) ** 2)) / 2.0
+    expected_ece = (abs(0.0 - p0) * 0.5) + (abs(1.0 - p1) * 0.5)
+
+    assert abs(evaluate_brier_score(model, examples) - expected_brier) < 1.0e-12
+    assert abs(evaluate_expected_calibration_error(model, examples, num_bins=10) - expected_ece) < 1.0e-12

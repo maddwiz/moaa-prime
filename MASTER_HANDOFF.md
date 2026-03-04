@@ -107,6 +107,13 @@ Every swarm run appends a training example:
 Router training script:
 - `scripts/train_router.py`
 - reads traces + dataset and writes `models/router_v3.pt`
+- uses deterministic class-balanced weighting during logistic fitting
+- fits deterministic post-logit calibration (`calibration_scale`, `calibration_bias`)
+- writes `reports/router_train_report.json` with:
+  - `training_accuracy`
+  - `training_brier_score`
+  - `training_ece`
+  - calibration parameters
 
 Router evaluation script:
 - `scripts/eval_router.py`

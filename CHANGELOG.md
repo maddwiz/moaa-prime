@@ -2,6 +2,24 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003B — RouterV3 calibration + training quality increment
+- Extended `RouterV3Model` (`src/moaa_prime/router/router_v3.py`) with deterministic post-logit calibration parameters:
+  - `calibration_scale`
+  - `calibration_bias`
+  - persisted in `models/router_v3.pt` and loaded with backward-compatible defaults for legacy model files.
+- Improved router training quality (`src/moaa_prime/router/training.py`) with deterministic class-balanced sample weighting.
+- Added deterministic calibration fitting to training output (Platt-style scale/offset over learned logits).
+- Added training calibration/quality metrics:
+  - Brier score (`training_brier_score`)
+  - Expected Calibration Error (`training_ece`)
+  - mirrored under `metrics` in `reports/router_train_report.json`.
+- Expanded Cycle 3 tests for calibration persistence/determinism and metric calculations:
+  - `tests/test_cycle3_router_training.py`
+  - `tests/test_cycle3_router_v3.py`
+- Updated Cycle 3 docs:
+  - `ARCHITECTURE_CYCLE3.md`
+  - `MASTER_HANDOFF.md`
+
 ## Cycle 003A — Nonstop Codex swarm automation
 - Added nonstop swarm daemon script: `scripts/swarm_autopilot.sh`.
   - `start|stop|status|tail|once|run` controls.

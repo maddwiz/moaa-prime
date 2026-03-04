@@ -44,6 +44,8 @@ Model:
 - deterministic logistic model (`RouterV3Model`)
 - loaded from `models/router_v3.pt` when present
 - fallback to stable default weights when model file is missing
+- post-logit calibration (`calibration_scale`, `calibration_bias`) is applied deterministically
+- calibration parameters are persisted in `models/router_v3.pt`
 
 Budget weighting:
 - `cheap`: prioritize cost/latency more
@@ -110,9 +112,14 @@ Files:
 Workflow:
 1. load traces + dataset rows
 2. extract per-agent training examples
-3. train deterministic logistic model with seed
-4. save model to `models/router_v3.pt`
-5. write report `reports/router_train_report.json`
+3. train deterministic logistic model with seed and class-balanced sample weighting
+4. fit deterministic post-logit calibration parameters
+5. save model to `models/router_v3.pt`
+6. write report `reports/router_train_report.json` including:
+   - `training_accuracy`
+   - `training_brier_score`
+   - `training_ece`
+   - calibration parameters (`calibration_scale`, `calibration_bias`)
 
 ## Router Eval Pipeline
 File:

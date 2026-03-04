@@ -83,20 +83,30 @@ class RouterV3Model:
         }
     )
     bias: float = -1.25
+    calibration_scale: float = 1.0
+    calibration_bias: float = 0.0
     seed: int = 0
     version: str = "router_v3"
 
-    def predict_expected_success(self, features: Mapping[str, float]) -> float:
+    def predict_logit(self, features: Mapping[str, float]) -> float:
         z = float(self.bias)
         for name in self.feature_names:
             z += float(self.weights.get(name, 0.0)) * float(features.get(name, 0.0))
-        return _sigmoid(z)
+        return z
+
+    def calibrate_logit(self, logit: float) -> float:
+        return (float(self.calibration_scale) * float(logit)) + float(self.calibration_bias)
+
+    def predict_expected_success(self, features: Mapping[str, float]) -> float:
+        return _sigmoid(self.calibrate_logit(self.predict_logit(features)))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "version": self.version,
             "seed": int(self.seed),
             "bias": float(self.bias),
+            "calibration_scale": float(self.calibration_scale),
+            "calibration_bias": float(self.calibration_bias),
             "feature_names": list(self.feature_names),
             "weights": {k: float(v) for k, v in self.weights.items()},
         }
@@ -108,10 +118,23 @@ class RouterV3Model:
         weights = {str(k): float(v) for k, v in raw_weights.items()}
         for key in feature_names:
             weights.setdefault(key, 0.0)
+
+        calibration_scale = 1.0
+        calibration_bias = 0.0
+        raw_calibration = data.get("calibration", {})
+        if isinstance(raw_calibration, Mapping):
+            calibration_scale = float(raw_calibration.get("scale", data.get("calibration_scale", 1.0)))
+            calibration_bias = float(raw_calibration.get("bias", data.get("calibration_bias", 0.0)))
+        else:
+            calibration_scale = float(data.get("calibration_scale", 1.0))
+            calibration_bias = float(data.get("calibration_bias", 0.0))
+
         return cls(
             feature_names=feature_names,
             weights=weights,
             bias=float(data.get("bias", -1.25)),
+            calibration_scale=calibration_scale,
+            calibration_bias=calibration_bias,
             seed=int(data.get("seed", 0)),
             version=str(data.get("version", "router_v3")),
         )

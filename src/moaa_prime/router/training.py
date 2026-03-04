@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import random
-from typing import Any, Dict, Iterable, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 from moaa_prime.contracts import Contract
 
@@ -14,6 +15,15 @@ from .router_v3 import FEATURE_NAMES, RouterV3Model, build_router_v3_features, s
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
+
+
+def _sigmoid(x: float) -> float:
+    z = _clamp(float(x), -50.0, 50.0)
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _label_to_binary(label: float) -> float:
+    return 1.0 if float(label) >= 0.5 else 0.0
 
 
 @dataclass(frozen=True)
@@ -167,6 +177,7 @@ def train_router_v3_model(
     epochs: int = 250,
     learning_rate: float = 0.18,
     l2: float = 1.0e-4,
+    fit_calibration: bool = True,
 ) -> RouterV3Model:
     rng = random.Random(int(seed))
 
@@ -179,15 +190,24 @@ def train_router_v3_model(
         weights[k] += rng.uniform(-0.001, 0.001)
 
     if not examples:
-        return RouterV3Model(feature_names=list(FEATURE_NAMES), weights=weights, bias=bias, seed=int(seed))
+        return RouterV3Model(
+            feature_names=list(FEATURE_NAMES),
+            weights=weights,
+            bias=bias,
+            calibration_scale=float(base.calibration_scale),
+            calibration_bias=float(base.calibration_bias),
+            seed=int(seed),
+        )
+
+    sample_weights = _build_class_balanced_sample_weights(examples)
 
     for _ in range(max(1, int(epochs))):
-        for ex in examples:
+        for idx, ex in enumerate(examples):
             z = bias
             for k in FEATURE_NAMES:
                 z += weights[k] * float(ex.features.get(k, 0.0))
-            pred = 1.0 / (1.0 + (2.718281828459045 ** (-max(-50.0, min(50.0, z)))))
-            err = pred - float(ex.label)
+            pred = _sigmoid(z)
+            err = (pred - _label_to_binary(ex.label)) * sample_weights[idx]
 
             for k in FEATURE_NAMES:
                 x = float(ex.features.get(k, 0.0))
@@ -195,7 +215,85 @@ def train_router_v3_model(
                 weights[k] -= float(learning_rate) * grad
             bias -= float(learning_rate) * err
 
-    return RouterV3Model(feature_names=list(FEATURE_NAMES), weights=weights, bias=bias, seed=int(seed))
+    model = RouterV3Model(
+        feature_names=list(FEATURE_NAMES),
+        weights=weights,
+        bias=bias,
+        seed=int(seed),
+    )
+
+    calibration_scale = float(base.calibration_scale)
+    calibration_bias = float(base.calibration_bias)
+    if fit_calibration:
+        calibration_scale, calibration_bias = fit_router_v3_calibration(
+            model,
+            examples,
+            sample_weights=sample_weights,
+        )
+
+    return RouterV3Model(
+        feature_names=list(FEATURE_NAMES),
+        weights=weights,
+        bias=bias,
+        calibration_scale=calibration_scale,
+        calibration_bias=calibration_bias,
+        seed=int(seed),
+    )
+
+
+def _build_class_balanced_sample_weights(examples: Sequence[RouterTrainingExample]) -> List[float]:
+    total = len(examples)
+    if total == 0:
+        return []
+
+    num_pos = sum(1 for ex in examples if _label_to_binary(ex.label) >= 0.5)
+    num_neg = total - num_pos
+    if num_pos == 0 or num_neg == 0:
+        return [1.0 for _ in examples]
+
+    pos_weight = float(total) / (2.0 * float(num_pos))
+    neg_weight = float(total) / (2.0 * float(num_neg))
+    return [pos_weight if _label_to_binary(ex.label) >= 0.5 else neg_weight for ex in examples]
+
+
+def fit_router_v3_calibration(
+    model: RouterV3Model,
+    examples: Sequence[RouterTrainingExample],
+    *,
+    sample_weights: Sequence[float] | None = None,
+    epochs: int = 300,
+    learning_rate: float = 0.08,
+    l2: float = 1.0e-4,
+) -> tuple[float, float]:
+    if not examples:
+        return 1.0, 0.0
+
+    if sample_weights is None or len(sample_weights) != len(examples):
+        sample_weights = [1.0 for _ in examples]
+
+    scale = 1.0
+    offset = 0.0
+    num_examples = float(len(examples))
+    for _ in range(max(1, int(epochs))):
+        grad_scale = 0.0
+        grad_offset = 0.0
+
+        for idx, ex in enumerate(examples):
+            raw_logit = float(model.predict_logit(ex.features))
+            calibrated_logit = (scale * raw_logit) + offset
+            pred = _sigmoid(calibrated_logit)
+            err = (pred - _label_to_binary(ex.label)) * float(sample_weights[idx])
+            grad_scale += err * raw_logit
+            grad_offset += err
+
+        # Light regularization around the identity transform (scale=1, offset=0)
+        # keeps calibration stable for small/clean datasets.
+        grad_scale = (grad_scale / num_examples) + (l2 * (scale - 1.0))
+        grad_offset = (grad_offset / num_examples) + (l2 * offset)
+        scale = _clamp(scale - (float(learning_rate) * grad_scale), 0.05, 20.0)
+        offset = _clamp(offset - (float(learning_rate) * grad_offset), -20.0, 20.0)
+
+    return float(scale), float(offset)
 
 
 def evaluate_training_accuracy(model: RouterV3Model, examples: Sequence[RouterTrainingExample]) -> float:
@@ -205,11 +303,56 @@ def evaluate_training_accuracy(model: RouterV3Model, examples: Sequence[RouterTr
     correct = 0
     for ex in examples:
         p = model.predict_expected_success(ex.features)
-        y = 1.0 if ex.label >= 0.5 else 0.0
+        y = _label_to_binary(ex.label)
         yhat = 1.0 if p >= 0.5 else 0.0
         if yhat == y:
             correct += 1
     return float(correct / float(len(examples)))
+
+
+def evaluate_brier_score(model: RouterV3Model, examples: Sequence[RouterTrainingExample]) -> float:
+    if not examples:
+        return 0.0
+
+    err = 0.0
+    for ex in examples:
+        p = _clamp(float(model.predict_expected_success(ex.features)), 0.0, 1.0)
+        y = _label_to_binary(ex.label)
+        delta = p - y
+        err += delta * delta
+    return float(err / float(len(examples)))
+
+
+def evaluate_expected_calibration_error(
+    model: RouterV3Model,
+    examples: Sequence[RouterTrainingExample],
+    *,
+    num_bins: int = 10,
+) -> float:
+    if not examples:
+        return 0.0
+
+    bins = max(1, int(num_bins))
+    stats: List[Dict[str, float]] = [{"count": 0.0, "sum_conf": 0.0, "sum_acc": 0.0} for _ in range(bins)]
+    for ex in examples:
+        conf = _clamp(float(model.predict_expected_success(ex.features)), 0.0, 1.0)
+        acc = _label_to_binary(ex.label)
+        idx = min(bins - 1, int(conf * bins))
+        row = stats[idx]
+        row["count"] += 1.0
+        row["sum_conf"] += conf
+        row["sum_acc"] += acc
+
+    total = float(len(examples))
+    ece = 0.0
+    for row in stats:
+        count = row["count"]
+        if count <= 0.0:
+            continue
+        avg_conf = row["sum_conf"] / count
+        avg_acc = row["sum_acc"] / count
+        ece += abs(avg_acc - avg_conf) * (count / total)
+    return float(ece)
 
 
 def train_and_save_router_v3(
@@ -224,13 +367,29 @@ def train_and_save_router_v3(
     model = train_router_v3_model(examples, seed=seed)
     save_router_v3_model(model_path, model)
 
+    train_accuracy = evaluate_training_accuracy(model, examples)
+    train_brier = evaluate_brier_score(model, examples)
+    train_ece = evaluate_expected_calibration_error(model, examples)
     return {
         "seed": int(seed),
         "num_records": len(records),
         "num_examples": len(examples),
         "model_path": str(model_path),
-        "training_accuracy": evaluate_training_accuracy(model, examples),
+        "training_accuracy": train_accuracy,
+        "training_brier_score": train_brier,
+        "training_ece": train_ece,
+        "calibration_scale": float(model.calibration_scale),
+        "calibration_bias": float(model.calibration_bias),
         "feature_names": list(FEATURE_NAMES),
         "weights": {k: float(model.weights.get(k, 0.0)) for k in FEATURE_NAMES},
         "bias": float(model.bias),
+        "metrics": {
+            "accuracy": train_accuracy,
+            "brier_score": train_brier,
+            "ece": train_ece,
+        },
+        "calibration": {
+            "scale": float(model.calibration_scale),
+            "bias": float(model.calibration_bias),
+        },
     }
