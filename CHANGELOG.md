@@ -2,6 +2,48 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003S — PR-8 docs/demo polish + strict upgrade closure
+- Implemented mandatory failure taxonomy upgrade module:
+  - `src/moaa_prime/eval/failure_taxonomy.py`
+  - deterministic canonical classes, classifier helpers, and remediation mapping
+  - added deterministic remediation-plan builder (`build_remediation_plan`) for loop dispatch
+- Integrated taxonomy module into dashboard:
+  - `scripts/dashboard.py` now imports shared taxonomy derivation + remediation plan
+  - preserved existing taxonomy counters while adding additive remediation recommendations
+- Added and exported eval package upgrade surface:
+  - `src/moaa_prime/eval/__init__.py`
+- Implemented mandatory structured answer object upgrade:
+  - `src/moaa_prime/schema/answer_object.py`
+  - `src/moaa_prime/schema/__init__.py`
+  - additive runtime/eval integration in:
+    - `src/moaa_prime/core/app.py` (`run_once`, `run_swarm`)
+    - `src/moaa_prime/eval/runner.py`
+- Added deterministic upgrade tests:
+  - `tests/test_upgrade_failure_taxonomy.py`
+  - `tests/test_upgrade_answer_object.py`
+- PR-8 documentation polish:
+  - `README.md` now includes full finish-gate runbook commands (including `scripts/eval_matrix.py`)
+  - `ROADMAP.md` now includes explicit done-gate token text `Failure taxonomy`
+  - updated continuity docs:
+    - `MASTER_HANDOFF.md`
+    - `FILEMAP.md`
+    - `CONTRACTS.md` (additive `answer_object` contract note)
+- Validation:
+  - `.venv/bin/pytest -q` -> `123 passed`
+  - full required scripts passed:
+    - `scripts/demo_run.py`
+    - `scripts/bench_run.py`
+    - `scripts/eval_run.py`
+    - `scripts/eval_tool_first.py`
+    - `scripts/eval_compare.py`
+    - `scripts/eval_dual_gate.py`
+    - `scripts/eval_matrix.py`
+    - `scripts/train_router.py`
+    - `scripts/eval_router.py`
+    - `scripts/render_report.py`
+    - `scripts/dashboard.py`
+  - strict done-check now fails only on dirty worktree pre-commit (`git_clean_worktree`)
+
 ## Cycle 003R — PR-7 telemetry dashboard + smoke coverage
 - Implemented PR-7 dashboard script:
   - `scripts/dashboard.py`

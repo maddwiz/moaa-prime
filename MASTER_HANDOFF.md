@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7)
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7, PR-8)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -149,6 +149,23 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `MEMORY_DRIFT`
     - `DUAL_REGRESSION`
     - `SWARM_LOOP`
+
+- PR-8 is implemented:
+  - README runbook now includes full finish-gate commands through `scripts/eval_matrix.py`, router train/eval, and dashboard rendering.
+  - roadmap wording now explicitly includes case-sensitive done-gate token `Failure taxonomy`.
+  - docs remain aligned with runnable scripts and generated report artifacts.
+
+- Mandatory upgrade implementation is now explicit:
+  - failure taxonomy + deterministic remediation plan module:
+    - `src/moaa_prime/eval/failure_taxonomy.py`
+    - tests: `tests/test_upgrade_failure_taxonomy.py`
+  - structured answer object normalization:
+    - `src/moaa_prime/schema/answer_object.py`
+    - package export: `src/moaa_prime/schema/__init__.py`
+    - additive runtime integration:
+      - `src/moaa_prime/core/app.py` (`run_once` and `run_swarm`)
+      - `src/moaa_prime/eval/runner.py` (eval outputs)
+    - tests: `tests/test_upgrade_answer_object.py`
 
 ## Cycle 3 Truth (Learning Loop)
 

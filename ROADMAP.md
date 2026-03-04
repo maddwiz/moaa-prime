@@ -138,6 +138,7 @@ These upgrades are required for "finished" status.
 - Oracle heuristics are fallback only when no verifier applies.
 
 ### Upgrade 2: Failure Taxonomy + Auto-Remediation
+- Failure taxonomy must be deterministic and machine-readable across eval artifacts and dashboard outputs.
 - Add deterministic failure classes and remediation mapping:
   - `ROUTING_MISS`
   - `TOOL_PARSE_FAIL`

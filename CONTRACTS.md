@@ -43,6 +43,12 @@ Notes:
 - `components` is implementation-defined but must remain a dictionary.
 - Additive debug field:
   - `route_trace: dict` may be emitted at top level with router intent metadata (`intent`, `matched_features`, `chosen_agent`, etc.).
+  - `answer_object: dict` may be emitted with normalized keys:
+    - `final: str`
+    - `tools: list[str]`
+    - `confidence: float`
+    - `notes: list[str]`
+    - `trace: dict`
 
 ## 2) Swarm output shape (`MoAAPrime.run_swarm(...)`)
 
@@ -61,6 +67,14 @@ Required top-level keys:
 
 Conditional top-level key:
 - `trace_path: str` is present only when `run_swarm(..., run_id=...)` is provided.
+
+Additive top-level key:
+- `answer_object: dict` may be emitted with normalized keys:
+  - `final: str`
+  - `tools: list[str]`
+  - `confidence: float`
+  - `notes: list[str]`
+  - `trace: dict`
 
 ### 2.1 `best` and `candidates[*]` item shape
 

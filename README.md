@@ -64,7 +64,14 @@ Run in this order:
 python scripts/demo_run.py
 python scripts/bench_run.py
 python scripts/eval_run.py
+python scripts/eval_tool_first.py
+python scripts/eval_compare.py
+python scripts/eval_dual_gate.py
+python scripts/eval_matrix.py
+python scripts/train_router.py
+python scripts/eval_router.py
 python scripts/render_report.py
+python scripts/dashboard.py
 ```
 
 Expected outputs:
@@ -72,6 +79,12 @@ Expected outputs:
 - `reports/demo_run.json`
 - `reports/bench.json`
 - `reports/eval_report.json`
+- `reports/tool_first_eval.json`
+- `reports/eval_compare.json`
+- `reports/dual_gated_eval.json`
+- `reports/eval_matrix.json`
+- `reports/router_train_report.json`
+- `reports/eval_router.json`
 - `reports/final_report.json`
 
 `reports/` is generated output and should stay untracked.

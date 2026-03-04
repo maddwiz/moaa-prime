@@ -19,6 +19,7 @@ from moaa_prime.swarm.manager import SwarmManager
 from moaa_prime.memory import ReasoningBank
 
 from moaa_prime.evolution.gcel import GCEL, GCELV2
+from moaa_prime.schema import upgrade_answer_object
 from moaa_prime.trace import TraceRecorder
 
 
@@ -479,7 +480,7 @@ class MoAAPrime:
             "ranking_rationale": decision_payload["rationale"],
         }
 
-        return {
+        out = {
             "mode": run_mode,
             "decision": decision_payload,
             "route_trace": route_trace,
@@ -494,6 +495,7 @@ class MoAAPrime:
                 "meta": getattr(oracle_block, "meta", {}) or {},
             },
         }
+        return upgrade_answer_object(out)
 
     def run_swarm(
         self,
@@ -567,7 +569,7 @@ class MoAAPrime:
         out["learning_trace_path"] = learn_paths["trace_path"]
         out["router_dataset_path"] = learn_paths["dataset_path"]
 
-        return out
+        return upgrade_answer_object(out)
 
     def _apply_contracts(self, contracts: list[Contract]) -> None:
         by_name = {c.name: c for c in contracts}

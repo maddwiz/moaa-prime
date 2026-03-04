@@ -7,14 +7,15 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-FAILURE_CLASSES: tuple[str, ...] = (
-    "ROUTING_MISS",
-    "TOOL_PARSE_FAIL",
-    "TOOL_EXEC_FAIL",
-    "FORMAT_FAIL",
-    "MEMORY_DRIFT",
-    "DUAL_REGRESSION",
-    "SWARM_LOOP",
+# Allow running this script from a repo checkout without requiring pip install -e .
+_SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+from moaa_prime.eval.failure_taxonomy import (
+    FAILURE_CLASSES,
+    build_remediation_plan,
+    derive_failure_taxonomy,
 )
 
 REPORT_FILES: dict[str, str] = {
@@ -97,141 +98,8 @@ def _extract_matrix_summary(report: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _count_failures_from_matrix(report: Mapping[str, Any], counters: dict[str, int]) -> None:
-    per_case = _as_mapping(report.get("per_case_diffs"))
-
-    for row in list(per_case.get("swarm_vs_baseline_single") or []):
-        r = _as_mapping(row)
-        pass_baseline = bool(r.get("pass_baseline"))
-        pass_target = bool(r.get("pass_target"))
-        pass_delta = _safe_float(r.get("pass_delta"))
-        latency_delta = _safe_float(r.get("latency_delta"))
-
-        if pass_baseline and not pass_target:
-            counters["ROUTING_MISS"] += 1
-        if latency_delta > 0.0 and pass_delta <= 0.0:
-            counters["SWARM_LOOP"] += 1
-
-    for row in list(per_case.get("tool_first_on_vs_off") or []):
-        r = _as_mapping(row)
-        case_id = str(r.get("case_id", "")).lower()
-        pass_baseline = bool(r.get("pass_baseline"))
-        pass_target = bool(r.get("pass_target"))
-        pass_delta = _safe_float(r.get("pass_delta"))
-        tool_delta = _safe_float(r.get("tool_verified_delta"))
-
-        if tool_delta > 0.0 and pass_delta > 0.0:
-            if any(token in case_id for token in ("exec", "runtime", "traceback")):
-                counters["TOOL_EXEC_FAIL"] += 1
-            else:
-                counters["TOOL_PARSE_FAIL"] += 1
-        elif pass_baseline and not pass_target:
-            counters["FORMAT_FAIL"] += 1
-
-    for row in list(per_case.get("memory_on_vs_off") or []):
-        r = _as_mapping(row)
-        pass_delta = _safe_float(r.get("pass_delta"))
-        oracle_delta = _safe_float(r.get("oracle_score_delta"))
-        if pass_delta < 0.0 or (pass_delta == 0.0 and oracle_delta < 0.0):
-            counters["MEMORY_DRIFT"] += 1
-
-    for row in list(per_case.get("dual_gated_vs_baseline_single") or []):
-        r = _as_mapping(row)
-        if _safe_float(r.get("pass_delta")) < 0.0:
-            counters["DUAL_REGRESSION"] += 1
-
-
-def _count_failures_from_eval_report(report: Mapping[str, Any], counters: dict[str, int]) -> None:
-    parse_tokens = (
-        "no_python_source_found",
-        "extract",
-        "parse",
-        "syntax",
-    )
-    exec_tokens = (
-        "exec",
-        "runtime",
-        "nameerror",
-        "typeerror",
-        "zerodivision",
-        "timeout",
-    )
-
-    for result in list(report.get("results") or []):
-        r = _as_mapping(result)
-        output = _as_mapping(r.get("output"))
-        route_trace = _as_mapping(output.get("route_trace"))
-
-        intent = str(route_trace.get("intent", "")).strip().lower()
-        chosen_agent = str(route_trace.get("chosen_agent", "")).strip().lower()
-        if intent == "math" and chosen_agent and "math" not in chosen_agent:
-            counters["ROUTING_MISS"] += 1
-        if intent == "code" and chosen_agent and "code" not in chosen_agent:
-            counters["ROUTING_MISS"] += 1
-
-        meta = _as_mapping(_as_mapping(output.get("result")).get("meta"))
-        tool_first = _as_mapping(meta.get("tool_first"))
-
-        local_hits = _safe_float(_as_mapping(meta.get("memory")).get("local_hits"), default=0.0)
-        if local_hits < 0.0:
-            counters["MEMORY_DRIFT"] += 1
-
-        per_case_classes: set[str] = set()
-        for probe_name in ("prompt_probe", "proposal_probe"):
-            probe = _as_mapping(tool_first.get(probe_name))
-            verification = _as_mapping(probe.get("verification"))
-            status = str(verification.get("status", "")).strip().lower()
-            if status != "fail":
-                continue
-
-            error_text = (
-                f"{verification.get('error_type', '')} {verification.get('error_message', '')}"
-            ).lower()
-            if any(token in error_text for token in parse_tokens):
-                per_case_classes.add("TOOL_PARSE_FAIL")
-            elif any(token in error_text for token in exec_tokens):
-                per_case_classes.add("TOOL_EXEC_FAIL")
-            else:
-                per_case_classes.add("FORMAT_FAIL")
-
-        for category in sorted(per_case_classes):
-            counters[category] += 1
-
-
-def _count_failures_from_dual_eval(report: Mapping[str, Any], counters: dict[str, int]) -> None:
-    summary = _as_mapping(report.get("summary"))
-    dual = _as_mapping(summary.get("dual_gated"))
-    if _safe_float(dual.get("pass_rate_delta_vs_baseline")) < 0.0:
-        counters["DUAL_REGRESSION"] += 1
-
-
-def _count_failures_from_eval_compare(report: Mapping[str, Any], counters: dict[str, int]) -> None:
-    latency = _as_mapping(report.get("avg_latency_proxy"))
-    entropy = _as_mapping(report.get("routing_entropy"))
-    if _safe_float(latency.get("delta")) > 0.0 and _safe_float(entropy.get("delta")) <= 0.0:
-        counters["SWARM_LOOP"] += 1
-
-
 def _derive_failure_taxonomy(reports: Mapping[str, Mapping[str, Any]]) -> dict[str, int]:
-    counters = {name: 0 for name in FAILURE_CLASSES}
-
-    eval_matrix = reports.get("eval_matrix")
-    if isinstance(eval_matrix, Mapping):
-        _count_failures_from_matrix(eval_matrix, counters)
-
-    eval_report = reports.get("eval_report")
-    if isinstance(eval_report, Mapping):
-        _count_failures_from_eval_report(eval_report, counters)
-
-    dual_eval = reports.get("dual_gated_eval")
-    if isinstance(dual_eval, Mapping):
-        _count_failures_from_dual_eval(dual_eval, counters)
-
-    eval_compare = reports.get("eval_compare")
-    if isinstance(eval_compare, Mapping):
-        _count_failures_from_eval_compare(eval_compare, counters)
-
-    return counters
+    return derive_failure_taxonomy(reports)
 
 
 def build_dashboard(report_dir: Path) -> dict[str, Any]:
@@ -274,6 +142,7 @@ def build_dashboard(report_dir: Path) -> dict[str, Any]:
     final_report = _as_mapping(reports.get("final_report", {}))
 
     failure_taxonomy = _derive_failure_taxonomy(reports)
+    remediation_plan = build_remediation_plan(failure_taxonomy, top_k=3)
 
     return {
         "dashboard_version": "pr7.v1",
@@ -297,6 +166,7 @@ def build_dashboard(report_dir: Path) -> dict[str, Any]:
         "failure_taxonomy": {
             "source": "derived_from_reports",
             "counts": failure_taxonomy,
+            "remediation": remediation_plan,
         },
         "verdict": str(final_report.get("verdict", "")),
     }
@@ -372,9 +242,23 @@ def render_text(dashboard: Mapping[str, Any]) -> str:
     lines.append("== Failure Taxonomy ==")
     taxonomy = _as_mapping(dashboard.get("failure_taxonomy"))
     counts = _as_mapping(taxonomy.get("counts"))
+    remediation = list(taxonomy.get("remediation") or [])
     lines.append(f"taxonomy.source={taxonomy.get('source', 'NA')}")
     for name in FAILURE_CLASSES:
         lines.append(f"{name}: {int(_safe_float(counts.get(name), default=0.0))}")
+    if remediation:
+        lines.append("taxonomy.remediation:")
+        for row in remediation:
+            item = _as_mapping(row)
+            lines.append(
+                "  {failure_class} x{count} -> {playbook} ({owner}/{priority})".format(
+                    failure_class=item.get("failure_class", "NA"),
+                    count=int(_safe_float(item.get("count"), default=0.0)),
+                    playbook=item.get("playbook", "NA"),
+                    owner=item.get("owner", "NA"),
+                    priority=item.get("priority", "NA"),
+                )
+            )
 
     lines.append("== Verdict ==")
     verdict = str(dashboard.get("verdict", "")).strip() or "NA"

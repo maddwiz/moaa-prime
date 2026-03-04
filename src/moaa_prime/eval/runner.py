@@ -5,6 +5,7 @@ import math
 from typing import Any, Dict, List
 
 from moaa_prime.core.app import MoAAPrime
+from moaa_prime.schema import upgrade_answer_object
 
 
 @dataclass
@@ -75,6 +76,7 @@ class EvalRunner:
                 out = self.app.run_swarm(c.prompt, mode=self.model_mode)
             else:
                 out = self.app.run_once(c.prompt, mode=self.model_mode)
+            out = upgrade_answer_object(out)
 
             oracle_score, routing_entropy, cost_proxy, latency_proxy = self._summarize_metrics(c.mode, out)
             results.append(

@@ -27,7 +27,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `pyproject.toml` `[project.scripts]`: `moaa-prime = moaa_prime.cli.main:main`
 - `src/moaa_prime/__main__.py`: module entrypoint for `python -m moaa_prime ...`
 - `src/moaa_prime/cli/main.py`: canonical CLI parser/dispatch
-- `src/moaa_prime/core/app.py`: `MoAAPrime` runtime façade (`v1`/`v2`/`v3`)
+- `src/moaa_prime/core/app.py`: `MoAAPrime` runtime façade (`v1`/`v2`/`v3`) + additive structured answer-object upgrade
 
 ## Major Modules
 
@@ -47,12 +47,13 @@ This maps the repo so a new context window can re-sync quickly.
 - `src/moaa_prime/duality/gated_dual.py`: PR-4 gated dual trigger + deterministic best-of selector
 - `src/moaa_prime/evolution/gcel.py`: GCEL v1 + GCELV2 gated evolution
 - `src/moaa_prime/trace/recorder.py`: trace files + router dataset appends
-- `src/moaa_prime/eval/runner.py`: mode-aware eval runner with proxy metrics
+- `src/moaa_prime/eval/runner.py`: mode-aware eval runner with proxy metrics + additive answer-object upgrade
 - `src/moaa_prime/eval/report.py`: eval report writer with aggregate metrics
 - `src/moaa_prime/memory/reasoning_bank.py`: global/lane memory storage + recall ranking + PR-6 write payload validation
 - `src/moaa_prime/memory/episodic_lane.py`: PR-6 adaptive local recall window + pruning behavior
-- `src/moaa_prime/eval/failure_taxonomy.py`: full-handoff upgrade failure classification + remediation mapping (required by strict done gate)
+- `src/moaa_prime/eval/failure_taxonomy.py`: full-handoff upgrade failure classification + remediation mapping/plan builder (required by strict done gate)
 - `src/moaa_prime/schema/answer_object.py`: structured answer normalization contract (required by strict done gate)
+- `src/moaa_prime/schema/__init__.py`: schema exports for answer-object normalization helpers
 - `src/moaa_prime/llm/factory.py`: stub/ollama model provider selection
 
 ## Scripts
@@ -67,7 +68,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
 - `scripts/render_report.py`: rolls up demo/bench/eval outputs into `reports/final_report.json`
-- `scripts/dashboard.py`: PR-7 telemetry dashboard (human-readable report navigation + failure taxonomy counters)
+- `scripts/dashboard.py`: PR-7 telemetry dashboard (human-readable report navigation + failure taxonomy counters/remediation plan)
 - `scripts/check_done.py`: evaluates done criteria and writes done-check report
 - `scripts/run_swarm_cycle.sh`: single swarm cycle launcher with prompt input
 - `scripts/swarm_autopilot.sh`: nonstop swarm daemon (start/stop/status/tail)
