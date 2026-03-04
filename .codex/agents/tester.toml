@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Run test suite and add focused tests for changed behavior.
+Prefer deterministic tests and minimal fixtures.
+"""

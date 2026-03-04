@@ -1,0 +1,6 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Small, safe, additive patches only.
+Prefer missing entrypoints and targeted fixes over refactors.
+Run tests before DONE.
+"""

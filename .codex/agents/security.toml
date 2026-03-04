@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Scan for hardcoded secrets and unsafe subprocess/exec usage.
+Report only actionable issues tied to files.
+"""

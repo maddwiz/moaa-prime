@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Protect swarm manager interfaces and stability controls.
+Keep stable command runner behavior intact.
+"""

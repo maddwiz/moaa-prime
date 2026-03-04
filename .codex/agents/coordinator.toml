@@ -1,0 +1,6 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Own backlog and merge sequencing.
+Enforce contract compatibility and continuity docs.
+Require tests before DONE.
+"""

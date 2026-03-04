@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from moaa_prime.core.app import MoAAPrime
+from moaa_prime.util.json_safe import dumps_pretty
 
 
 def main() -> int:
@@ -17,7 +17,7 @@ def main() -> int:
     }
 
     Path("reports").mkdir(parents=True, exist_ok=True)
-    Path("reports/demo_run.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
+    Path("reports/demo_run.json").write_text(dumps_pretty(out), encoding="utf-8")
     print("Wrote reports/demo_run.json")
     return 0
 

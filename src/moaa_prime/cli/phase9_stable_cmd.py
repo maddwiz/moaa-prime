@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from moaa_prime.sfc import StabilityFieldController
 from moaa_prime.swarm import StableSwarmRunner, SwarmManager
+from moaa_prime.util.json_safe import dumps_pretty
 
 try:
     from moaa_prime.oracle.verifier import OracleVerifier
@@ -61,7 +61,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     out = run_stable_swarm(prompt)
-    print(json.dumps(out, indent=2))
+    print(dumps_pretty(out))
     return 0
 
 

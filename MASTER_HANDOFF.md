@@ -1,133 +1,122 @@
-# MASTER_HANDOFF — MoAA-Prime (living continuity doc)
+# MASTER_HANDOFF — MoAA-Prime
 
-Owner: Desmond
-Local path: ~/moaa-prime
+Owner: Desmond  
+Local path: `~/moaa-prime`
 
-Golden rules:
-- FULL FILE REPLACEMENTS ONLY (no partial edits).
-- Continuity docs must be COMPLETE (Phase 1 → current).
-- After each phase: update MASTER_HANDOFF.md + FILEMAP.md + CHANGELOG.md, run tests, commit.
+## Golden Rules
 
----
+- Keep changes small, test-backed, and reversible.
+- Update `MASTER_HANDOFF.md`, `FILEMAP.md`, and `CHANGELOG.md` when behavior changes.
+- Treat `reports/` as generated output.
 
-## What MoAA-Prime is (current)
-MoAA-Prime is a “Mixture of Adaptive Agents” system:
+## What MoAA-Prime Is (Current)
 
-- Agents with contracts (domains/tools/competence)
-- Router chooses agent(s) for prompts/tasks
-- Oracle scores truth/quality
-- Swarm manager runs multi-candidate deliberation
-- Memory: per-agent lanes + global ReasoningBank
-- E-MRE upgrades: AEDMC + SH-COS + GFO + curiosity bump hooks
-- SGM + Energy Fusion scaffolding
-- SFC stability/budget hooks
-- Dual-brain hooks (Architect / Oracle split)
-- GCEL evolves contracts over time
-- Eval + demo + bench scripts for a “hard-polish” demo bundle
-- Optional real model wiring via Ollama (keeps tests passing by default)
+MoAA-Prime is a Mixture of Adaptive Agents prototype with:
 
----
+- contract-based specialist agents
+- meta-routing with decision metadata
+- oracle scoring
+- swarm deliberation
+- memory (episodic + ReasoningBank + E-MRE hooks)
+- SGM / energy fusion scaffolding
+- SFC stability gates
+- dual-brain runner scaffolding
+- GCEL contract evolution
+- demo, benchmark, eval, and report scripts
+- optional Ollama provider wiring
 
-## Current truth snapshot (verify anytime)
-Run tests:
-  pytest -q
+## Current Truth Snapshot
 
-Known-good state:
-- pytest passes (latest seen: 21 passed)
-- demo script writes: reports/demo_run.json
-- bench script writes: reports/bench.json
-- with Ollama enabled, bench runs slower (real model latency)
+- tests run via `python -m pytest -q`
+- module CLI works via `python -m moaa_prime ...`
+- demo bundle scripts write JSON files under `reports/`
 
----
+## Setup
 
-## How to run (simple)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e .
+```
 
-### 1) Tests
-pytest -q
+## Codex Swarm Setup
 
-### 2) CLI (quick)
-python -m moaa_prime "your prompt"
+- Project multi-agent config: `.codex/config.toml`
+- Role files: `.codex/agents/*.toml`
+- Expected local Codex feature flag: `~/.codex/config.toml` with `features.multi_agent = true`
 
-### 3) Demo bundle (writes JSON artifacts)
+## Run
+
+### Tests
+
+```bash
+python -m pytest -q
+```
+
+### CLI
+
+Shorthand route:
+
+```bash
+python -m moaa_prime "Solve: 2x + 3 = 7. Return only x."
+```
+
+Explicit commands:
+
+```bash
+python -m moaa_prime hello
+python -m moaa_prime route "Write Python: function add(a,b) returns a+b"
+python -m moaa_prime swarm "Explain why 1/0 is undefined."
+```
+
+### Demo Bundle
+
+```bash
 python scripts/demo_run.py
-# output: reports/demo_run.json
-
-### 4) Bench (writes timing JSON)
 python scripts/bench_run.py
-# output: reports/bench.json
+python scripts/eval_run.py
+python scripts/render_report.py
+```
 
----
+Expected outputs:
 
-## Real model wiring (Ollama) — optional
-Default = stub model (tests stay fast + deterministic).
+- `reports/demo_run.json`
+- `reports/bench.json`
+- `reports/eval_report.json`
+- `reports/final_report.json`
 
-Enable Ollama:
+## Ollama Wiring (Optional)
+
+```bash
 export MOAA_LLM_PROVIDER=ollama
 export MOAA_OLLAMA_HOST="http://127.0.0.1:11434"
 export MOAA_OLLAMA_MODEL="llama3.1:8b-instruct-q4_K_M"
+```
 
-Sanity check installed models:
+Sanity check:
+
+```bash
 curl -s http://127.0.0.1:11434/api/tags | head
+```
 
-Then run:
-python scripts/demo_run.py
-python scripts/bench_run.py
+## Phase Status
 
-Note:
-- If you pick the wrong model name, calls can fail.
-- Your working model (seen in /api/tags) is: llama3.1:8b-instruct-q4_K_M
+- Phase 1: Packaging + smoke
+- Phase 2: Agents + contracts + router
+- Phase 3: Oracle
+- Phase 4: Swarm
+- Phase 5: Memory v1
+- Phase 6: E-MRE hooks
+- Phase 7: SGM + energy fusion scaffolding
+- Phase 8: Consolidation
+- Phase 9: SFC hooks
+- Phase 10: Dual-brain runner hooks
+- Phase 11: GCEL
+- Phase 12: Demo + bench + eval scripts
+- Cycle 001: CLI module entrypoint + doc/code alignment
 
----
+## Repo Hygiene Notes
 
-## Phases (truth status)
-
-### Phase 1 — Packaging + smoke ✅
-- src layout + minimal app + import smoke tests
-
-### Phase 2 — Agents + Contracts + Router ✅
-- Contract model
-- BaseAgent + MathAgent + CodeAgent
-- MetaRouter returns decision metadata
-
-### Phase 3 — Oracle ✅
-- Oracle verifier wired into outputs + tests
-
-### Phase 4 — Swarm ✅
-- SwarmManager multi-candidate path + tests
-
-### Phase 5 — Memory v1 ✅
-- Per-agent memory hooks + global ReasoningBank
-- Tests expect result.meta["memory"] includes:
-  - local_hits
-  - bank_hits
-
-### Phase 6 — E-MRE v1 ✅
-- AEDMC / SH-COS / GFO scaffolding + curiosity bump hooks (as implemented in memory layer)
-
-### Phase 7 — SGM + Energy Fusion v0 ✅
-- Shared geometric manifold + fusion scaffolding (v0)
-
-### Phase 8 — Consolidation ✅
-- Stabilized interfaces + tests as the system grew
-
-### Phase 9 — SFC ✅
-- Stability/budget coupling hooks (v0)
-
-### Phase 10 — Dual-brain ✅
-- Architect / Oracle split runner scaffolding (v0)
-
-### Phase 11 — GCEL ✅
-- Genetic Contract Evolution Loop (elite selection + mutation + crossover + clamping)
-
-### Phase 12 — Hard-polish demo + benchmarks ✅
-- Eval runner + JSON report writer
-- Demo script + bench script
-- Optional real model provider wiring (Ollama)
-- reports/ is generated output and should not be committed
-
----
-
-## Repo hygiene notes
-- reports/ is GENERATED. It should be gitignored.
-- Keep small phases: change → tests → commit.
-
+- Keep `reports/` out of source control.
+- Use branch-per-cycle and merge via tested commits.

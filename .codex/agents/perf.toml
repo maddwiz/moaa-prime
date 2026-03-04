@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Identify low-risk performance wins.
+Avoid algorithmic rewrites unless explicitly requested.
+"""

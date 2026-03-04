@@ -2,6 +2,20 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 001 — CLI + docs hard-polish
+- Added module entrypoint: `src/moaa_prime/__main__.py`.
+- Updated CLI parser to support:
+  - `python -m moaa_prime "prompt"` (shorthand route mode)
+  - explicit `hello|route|swarm` subcommands.
+- Added safe JSON serialization for dataclass-containing outputs in CLI/demo paths.
+- Added CLI behavior tests:
+  - `tests/test_cli_module_entrypoint.py`
+- Added `pytest.ini` (`pythonpath = src`) for local test discovery without editable install.
+- Added install-time console script:
+  - `moaa-prime` via `pyproject.toml`
+- Added `ARCHITECTURE.md`.
+- Replaced stale continuity docs (`README.md`, `MASTER_HANDOFF.md`, `FILEMAP.md`, `DEMO_README.md`) to match real paths and commands.
+
 ## Phase 1 — Packaging + smoke
 - Added src/ layout, minimal app entry, import smoke tests.
 
@@ -58,4 +72,3 @@ All notable changes to this repo, by phase.
   - MOAA_OLLAMA_HOST
   - MOAA_OLLAMA_MODEL
 - reports/ treated as generated output (gitignored).
-

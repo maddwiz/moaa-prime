@@ -1,25 +1,24 @@
-# MoAA-Prime — Demo Bundle
+# MoAA-Prime Demo Bundle
 
-This repository demonstrates a Mixture of Adaptive Agents system with:
+## Run
 
-- Verifiable agent routing
-- Multi-agent swarm reasoning
-- Memory with E-MRE (anti-rot)
-- Oracle-based truth scoring
-- Dual-brain architecture
-- Evolutionary contract updates
-- Real model inference (Ollama)
-
-## One-command demo
 ```bash
-pytest -q
+python -m pytest -q
 python scripts/demo_run.py
 python scripts/bench_run.py
 python scripts/eval_run.py
-python scripts/render_report.py                                                            Outputs
-	•	reports/demo_run.json      -> raw agent outputs
-	•	reports/bench.json         -> latency
-	•	reports/eval_report.json   -> correctness
-	•	reports/final_report.json  -> human-readable summary
+python scripts/render_report.py
+```
 
-This is a research prototype intended for evaluation and acquisition discussions.
+## Outputs
+
+- `reports/demo_run.json`: raw single-run and swarm outputs
+- `reports/bench.json`: timing summary
+- `reports/eval_report.json`: eval cases and outcomes
+- `reports/final_report.json`: aggregated summary report
+
+## Notes
+
+- `reports/` is generated output and must stay gitignored.
+- Default LLM mode is stub for deterministic local runs.
+- Optional Ollama mode is controlled by `MOAA_LLM_PROVIDER=ollama`.

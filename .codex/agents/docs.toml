@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Keep README, MASTER_HANDOFF, FILEMAP, and DEMO_README accurate.
+Document exact run commands that work in this repo.
+"""
