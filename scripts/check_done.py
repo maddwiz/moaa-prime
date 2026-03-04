@@ -17,6 +17,10 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
 def _json_path_get(doc: Any, path: str) -> Any:
     current = doc
     for raw_part in path.split("."):
@@ -75,6 +79,7 @@ class CheckResult:
     operator: str = ""
     file: str = ""
     path: str = ""
+    command: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -86,6 +91,7 @@ class CheckResult:
             "operator": self.operator,
             "file": self.file,
             "path": self.path,
+            "command": self.command,
         }
 
 
@@ -93,6 +99,8 @@ def evaluate(criteria_path: Path, repo_root: Path) -> Dict[str, Any]:
     criteria = _read_json(criteria_path)
 
     required_files = [Path(p) for p in criteria.get("required_files", [])]
+    file_checks = criteria.get("file_checks", [])
+    command_checks = criteria.get("command_checks", [])
     metric_checks = criteria.get("checks", [])
     require_clean_worktree = bool(criteria.get("require_clean_worktree", False))
 
@@ -111,6 +119,64 @@ def evaluate(criteria_path: Path, repo_root: Path) -> Dict[str, Any]:
                 file=str(rel),
             )
         )
+
+    for idx, check in enumerate(file_checks):
+        name = str(check.get("name") or f"file_check_{idx + 1}")
+        file_rel = Path(str(check["file"]))
+        full = repo_root / file_rel
+        min_bytes = int(check.get("min_bytes", 0))
+        contains = check.get("contains")
+
+        if not full.exists():
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=False,
+                    message="source file missing",
+                    expected={"exists": True, "min_bytes": min_bytes, "contains": contains},
+                    file=str(file_rel),
+                )
+            )
+            continue
+
+        try:
+            text = _read_text(full)
+            size = len(text.encode("utf-8"))
+            passed = size >= min_bytes
+            msg = "ok" if passed else f"size {size} < min_bytes {min_bytes}"
+
+            if passed and contains is not None:
+                if isinstance(contains, list):
+                    missing = [str(s) for s in contains if str(s) not in text]
+                    if missing:
+                        passed = False
+                        msg = f"missing required text: {missing}"
+                else:
+                    needle = str(contains)
+                    if needle not in text:
+                        passed = False
+                        msg = f"missing required text: {needle}"
+
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=passed,
+                    message=msg,
+                    actual={"bytes": size},
+                    expected={"min_bytes": min_bytes, "contains": contains},
+                    file=str(file_rel),
+                )
+            )
+        except Exception as exc:  # pragma: no cover - defensive path
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=False,
+                    message=f"evaluation error: {exc}",
+                    expected={"min_bytes": min_bytes, "contains": contains},
+                    file=str(file_rel),
+                )
+            )
 
     if require_clean_worktree:
         clean = _git_is_clean(repo_root)
@@ -171,6 +237,61 @@ def evaluate(criteria_path: Path, repo_root: Path) -> Dict[str, Any]:
                     operator=op,
                     file=str(file_rel),
                     path=path,
+                )
+            )
+
+    for idx, check in enumerate(command_checks):
+        name = str(check.get("name") or f"command_check_{idx + 1}")
+        cmd = str(check["cmd"])
+        timeout_sec = int(check.get("timeout_sec", 600))
+        expected_exit = int(check.get("expected_exit", 0))
+
+        try:
+            run = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+            passed = run.returncode == expected_exit
+            stderr_tail = (run.stderr or "").strip()[-500:]
+            stdout_tail = (run.stdout or "").strip()[-500:]
+            msg = "ok" if passed else f"exit {run.returncode} != expected {expected_exit}"
+            if not passed:
+                detail = stderr_tail or stdout_tail
+                if detail:
+                    msg = f"{msg}; detail={detail}"
+
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=passed,
+                    message=msg,
+                    actual={"exit_code": run.returncode},
+                    expected={"expected_exit": expected_exit},
+                    command=cmd,
+                )
+            )
+        except subprocess.TimeoutExpired:
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=False,
+                    message=f"command timed out after {timeout_sec}s",
+                    expected={"expected_exit": expected_exit},
+                    command=cmd,
+                )
+            )
+        except Exception as exc:  # pragma: no cover - defensive path
+            results.append(
+                CheckResult(
+                    name=name,
+                    passed=False,
+                    message=f"command failed to run: {exc}",
+                    expected={"expected_exit": expected_exit},
+                    command=cmd,
                 )
             )
 

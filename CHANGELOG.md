@@ -2,6 +2,23 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003H — Roadmap-driven done definition
+- Replaced `ROADMAP.md` (previously empty) with the finish roadmap (PR-0..PR-8) and explicit done definition.
+- Updated `.codex/prompts/autopilot.md` so swarm cycles follow the roadmap in order (PR-0..PR-5 first) and use done-gate status as the only completion signal.
+- Reworked `.codex/done_criteria.json` to align with roadmap completion:
+  - requires implementation artifacts for contracts/tool-first/code-sandbox/gated-dual/eval-matrix
+  - requires README/ROADMAP/CONTRACTS quality gates
+  - requires eval-matrix performance deltas for `tool_first`, `swarm`, and `dual_gated`
+  - requires command checks (`pytest`, `demo_run`, `bench_run`, `eval_matrix`, `render_report`)
+- Extended `scripts/check_done.py`:
+  - `file_checks` for file size/content gates
+  - `command_checks` for executable verification gates
+  - richer per-check output including command/source context
+- Updated continuity docs to reflect roadmap-driven completion:
+  - `README.md`
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003G — RouterV3 budget-mode calibration override increment
 - Improved RouterV3 calibration quality in `src/moaa_prime/router/router_v3.py` and `src/moaa_prime/router/training.py`:
   - added optional `calibration_by_budget_mode` overrides (`cheap`, `balanced`, `max_quality`) with deterministic fallback to global calibration (`calibration_scale`, `calibration_bias`)

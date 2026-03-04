@@ -87,6 +87,9 @@ Artifacts are written to `.codex/runs/` as `*.log` and `*.final.txt`.
 
 ## Codex Swarm (Nonstop Autopilot)
 
+Roadmap source-of-truth:
+- `ROADMAP.md` (PR-0 .. PR-8, done definition)
+
 Start a continuous swarm loop (background daemon):
 
 ```bash

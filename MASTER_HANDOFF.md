@@ -92,11 +92,14 @@ Done gate:
 - criteria file: `.codex/done_criteria.json`
 - evaluator script: `scripts/check_done.py`
 - behavior: each successful cycle evaluates done criteria; if met, status becomes `done` and daemon exits.
+- roadmap source-of-truth: `ROADMAP.md` (PR-0 through PR-8)
+- current done gate requires PR-0..PR-5 implementation artifacts plus eval-matrix performance deltas and runbook command checks.
 
 Primary artifacts:
 - `reports/demo_run.json`
 - `reports/bench.json`
 - `reports/eval_report.json`
+- `reports/eval_matrix.json`
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`

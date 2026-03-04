@@ -11,6 +11,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `ARCHITECTURE_CYCLE3.md`: Cycle 3 learning architecture (router training + pareto + traces)
 - `FILEMAP.md`: this file
 - `CHANGELOG.md`: phase and cycle history
+- `ROADMAP.md`: execution roadmap (PR-0..PR-8) and done definition
 - `DEMO_README.md`: demo/bench/eval artifact runbook
 - `pyproject.toml`: package metadata and entry points
 - `pytest.ini`: test path config (`pythonpath = src`)

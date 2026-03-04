@@ -1,41 +1,102 @@
 {
   "require_clean_worktree": true,
   "required_files": [
-    "reports/eval_compare.json",
-    "reports/eval_router.json",
-    "reports/router_train_report.json",
-    "reports/eval_report.json",
-    "models/router_v3.pt",
-    "datasets/router_training.jsonl"
+    "CONTRACTS.md",
+    "src/moaa_prime/policy/tool_first.py",
+    "src/moaa_prime/tools/code_sandbox.py",
+    "src/moaa_prime/duality/gated_dual.py",
+    "scripts/eval_matrix.py",
+    "reports/demo_run.json",
+    "reports/bench.json",
+    "reports/eval_matrix.json",
+    "reports/final_report.json"
+  ],
+  "file_checks": [
+    {
+      "name": "readme_filled",
+      "file": "README.md",
+      "min_bytes": 500
+    },
+    {
+      "name": "roadmap_filled",
+      "file": "ROADMAP.md",
+      "min_bytes": 1000,
+      "contains": [
+        "PR-0",
+        "PR-1",
+        "PR-2",
+        "PR-3",
+        "PR-4",
+        "PR-5",
+        "Done Definition"
+      ]
+    },
+    {
+      "name": "contracts_doc_filled",
+      "file": "CONTRACTS.md",
+      "min_bytes": 500,
+      "contains": [
+        "Router output shape",
+        "Swarm output shape",
+        "Agent interface"
+      ]
+    }
+  ],
+  "command_checks": [
+    {
+      "name": "pytest_green",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q; else pytest -q; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "demo_run",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/demo_run.py; else python scripts/demo_run.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "bench_run",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/bench_run.py; else python scripts/bench_run.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_matrix",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_matrix.py; else python scripts/eval_matrix.py; fi",
+      "timeout_sec": 2400
+    },
+    {
+      "name": "render_report",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/render_report.py; else python scripts/render_report.py; fi",
+      "timeout_sec": 1800
+    }
   ],
   "checks": [
     {
-      "name": "v3_win_rate_over_v2",
-      "file": "reports/eval_compare.json",
-      "path": "win_rate_candidate_over_baseline",
-      "op": "ge",
-      "value": 0.25
+      "name": "tool_first_beats_baseline",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.tool_first.pass_rate_delta_vs_baseline",
+      "op": "gt",
+      "value": 0.0
     },
     {
-      "name": "v3_routing_accuracy",
-      "file": "reports/eval_router.json",
-      "path": "routing_accuracy.v3",
-      "op": "ge",
-      "value": 0.8
+      "name": "swarm_beats_baseline",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.swarm.pass_rate_delta_vs_baseline",
+      "op": "gt",
+      "value": 0.0
     },
     {
-      "name": "router_train_accuracy",
-      "file": "reports/router_train_report.json",
-      "path": "training_accuracy",
+      "name": "dual_gated_non_regression",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.dual_gated.pass_rate_delta_vs_baseline",
       "op": "ge",
-      "value": 0.75
+      "value": 0.0
     },
     {
-      "name": "router_train_ece",
-      "file": "reports/router_train_report.json",
-      "path": "training_ece",
-      "op": "le",
-      "value": 0.1
+      "name": "final_report_has_verdict",
+      "file": "reports/final_report.json",
+      "path": "verdict",
+      "op": "ne",
+      "value": ""
     }
   ]
 }
