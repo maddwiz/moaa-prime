@@ -2,6 +2,32 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003O — Full-handoff strict completion gate
+- Tightened `.codex/done_criteria.json` so done means full handoff scope is implemented and verified.
+  - added required artifact gates for full runbook outputs and finish modules
+  - added required-file gates for upgrade deliverables:
+    - `src/moaa_prime/eval/failure_taxonomy.py`
+    - `src/moaa_prime/schema/answer_object.py`
+    - `scripts/dashboard.py`
+    - dedicated memory/upgrade/dashboard test files
+  - expanded command checks to full finish checklist:
+    - `demo_run`, `bench_run`, `eval_run`, `eval_tool_first`, `eval_compare`, `eval_dual_gate`, `eval_matrix`, `train_router`, `eval_router`, `render_report`
+    - compatibility and targeted test suites
+  - expanded metric checks to enforce:
+    - tool-first uplift
+    - swarm uplift
+    - dual-gated non-regression
+    - memory non-regression
+    - SFC latency non-regression
+- Updated `.codex/prompts/autopilot.md`:
+  - now treats full handoff scope as mandatory (PR-0..PR-8 plus upgrade items)
+  - includes expanded finish validation checklist
+- Updated roadmap/docs to match strict completion semantics:
+  - `ROADMAP.md` (PR-7 no longer optional; mandatory upgrade section added)
+  - `README.md`
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003N — PR-5 eval matrix comparative ablations
 - Added deterministic PR-5 eval matrix script:
   - `scripts/eval_matrix.py` -> `reports/eval_matrix.json`

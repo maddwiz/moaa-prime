@@ -213,7 +213,7 @@ Done gate:
 - evaluator script: `scripts/check_done.py`
 - behavior: each successful cycle evaluates done criteria; if met, status becomes `done` and daemon exits.
 - roadmap source-of-truth: `ROADMAP.md` (PR-0 through PR-8)
-- current done gate requires PR-0..PR-5 implementation artifacts plus eval-matrix performance deltas and runbook command checks.
+- current done gate requires full handoff scope: PR-0..PR-8, full runbook commands, compatibility/memory tests, and mandatory upgrade artifacts (Tool-Verified Oracle, failure taxonomy, structured answer object, budgeted swarm checks, guardrailed router behavior, dashboard).
 
 Primary artifacts:
 - `reports/demo_run.json`

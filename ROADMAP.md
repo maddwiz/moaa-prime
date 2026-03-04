@@ -112,7 +112,7 @@ Deliver:
 Acceptance:
 - memory regressions are caught by CI tests.
 
-## PR-7: Telemetry Dashboard (Optional)
+## PR-7: Telemetry Dashboard
 
 Deliver:
 - lightweight dashboard (`scripts/dashboard.py`) showing key metrics and failure taxonomy.
@@ -129,16 +129,71 @@ Deliver:
 Acceptance:
 - new contributor can run demo and eval matrix from docs.
 
+## Mandatory Upgrades (Full Handoff Scope)
+
+These upgrades are required for "finished" status.
+
+### Upgrade 1: Tool-Verified Oracle (TVO)
+- Tool-verified math/code outcomes must dominate oracle confidence when deterministic verification exists.
+- Oracle heuristics are fallback only when no verifier applies.
+
+### Upgrade 2: Failure Taxonomy + Auto-Remediation
+- Add deterministic failure classes and remediation mapping:
+  - `ROUTING_MISS`
+  - `TOOL_PARSE_FAIL`
+  - `TOOL_EXEC_FAIL`
+  - `FORMAT_FAIL`
+  - `MEMORY_DRIFT`
+  - `DUAL_REGRESSION`
+  - `SWARM_LOOP`
+- Add tests proving taxonomy classification and remediation dispatch stability.
+
+### Upgrade 3: Structured Answer Object
+- Normalize agent outputs into a stable object contract:
+  - `final`
+  - `tools`
+  - `confidence`
+  - `notes`
+  - `trace`
+- Add tests proving normalization and compatibility with existing report pipelines.
+
+### Upgrade 4: Budgeted Swarm
+- Enforce explicit budget controls:
+  - token budget
+  - round budget
+  - elapsed-time budget
+  - diminishing-returns stop rule
+- Validate via eval outputs that budget mode avoids latency regression.
+
+### Upgrade 5: Guardrailed Learned Router
+- Keep deterministic intent-first routing as primary guardrail.
+- Learned router remains a bounded scoring layer/tie-breaker and must not bypass intent safety.
+
+### Upgrade 6: Dashboard Demoability
+- Implement dashboard script and smoke test to load and render key report artifacts.
+- Ensure it can be run locally from documented commands.
+
 ## Done Definition
 
 MoAA is done when all are true:
 1. `pytest -q` is green.
-2. `scripts/demo_run.py`, `scripts/bench_run.py`, `scripts/eval_matrix.py`, and `scripts/render_report.py` run cleanly.
-3. `reports/eval_matrix.json` shows:
+2. Full runbook scripts run cleanly:
+   - `scripts/demo_run.py`
+   - `scripts/bench_run.py`
+   - `scripts/eval_run.py`
+   - `scripts/eval_tool_first.py`
+   - `scripts/eval_compare.py`
+   - `scripts/eval_dual_gate.py`
+   - `scripts/eval_matrix.py`
+   - `scripts/train_router.py`
+   - `scripts/eval_router.py`
+   - `scripts/render_report.py`
+3. `reports/eval_matrix.json` and focused eval reports show:
    - tool-first beats baseline,
    - swarm beats baseline where expected,
    - dual-gated does not regress overall.
-4. `README.md` and `ROADMAP.md` are complete and current.
-5. `reports/final_report.json` is generated and demo-ready.
+4. PR-0..PR-8 deliverables and mandatory upgrades are implemented and covered by deterministic tests.
+5. `README.md`, `ROADMAP.md`, `CONTRACTS.md`, and `DEMO_README.md` are complete and current.
+6. `reports/final_report.json` is generated and demo-ready.
 
 Autopilot must stop only when done-check criteria are satisfied.

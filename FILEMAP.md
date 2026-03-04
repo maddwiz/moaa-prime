@@ -49,6 +49,8 @@ This maps the repo so a new context window can re-sync quickly.
 - `src/moaa_prime/trace/recorder.py`: trace files + router dataset appends
 - `src/moaa_prime/eval/runner.py`: mode-aware eval runner with proxy metrics
 - `src/moaa_prime/eval/report.py`: eval report writer with aggregate metrics
+- `src/moaa_prime/eval/failure_taxonomy.py`: full-handoff upgrade failure classification + remediation mapping (required by strict done gate)
+- `src/moaa_prime/schema/answer_object.py`: structured answer normalization contract (required by strict done gate)
 - `src/moaa_prime/llm/factory.py`: stub/ollama model provider selection
 
 ## Scripts
@@ -63,6 +65,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
 - `scripts/render_report.py`: rolls up demo/bench/eval outputs into `reports/final_report.json`
+- `scripts/dashboard.py`: report dashboard entrypoint (required by strict done gate)
 - `scripts/check_done.py`: evaluates done criteria and writes done-check report
 - `scripts/run_swarm_cycle.sh`: single swarm cycle launcher with prompt input
 - `scripts/swarm_autopilot.sh`: nonstop swarm daemon (start/stop/status/tail)
@@ -106,6 +109,12 @@ Roadmap PR-4 tests:
 
 Roadmap PR-5 tests:
 - `tests/test_pr5_eval_matrix_script.py`
+
+Roadmap PR-6 and upgrade tests (required by strict done gate):
+- `tests/test_pr6_memory_regression.py`
+- `tests/test_upgrade_failure_taxonomy.py`
+- `tests/test_upgrade_answer_object.py`
+- `tests/test_pr7_dashboard_smoke.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`

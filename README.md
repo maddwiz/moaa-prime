@@ -150,6 +150,7 @@ SWARM_AUTOPILOT_AUTOCOMMIT=1 SWARM_AUTOPILOT_AUTOPUSH=1 SWARM_AUTOPILOT_VALIDATE
 Definition of done:
 - Criteria live in `.codex/done_criteria.json`.
 - On each successful cycle, autopilot runs `scripts/check_done.py`.
+- Criteria include full-handoff scope (roadmap PR-0..PR-8 + mandatory upgrade items).
 - When criteria are met, cycle status becomes `done` and the loop exits automatically.
 
 Run done-check manually:
