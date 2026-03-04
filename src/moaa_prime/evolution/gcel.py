@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import Dict, List, Sequence
+from dataclasses import dataclass, replace
+from typing import Callable, Dict, List, Mapping, Sequence
 import random
 
 from moaa_prime.contracts import Contract
@@ -38,11 +38,16 @@ def crossover_contracts(a: Contract, b: Contract, *, rng: random.Random) -> Cont
     if tools and rng.random() < 0.20:
         tools.pop(rng.randrange(len(tools)))
 
+    reliability = _clamp((float(a.reliability) * w) + (float(b.reliability) * (1.0 - w)), 0.05, 0.99)
+    cost_prior = _clamp((float(a.cost_prior) * w) + (float(b.cost_prior) * (1.0 - w)), 0.01, 0.99)
+
     return Contract(
         name=a.name,
         domains=domains,
         tools=tools,
         competence=float(comp),
+        reliability=float(reliability),
+        cost_prior=float(cost_prior),
     )
 
 
@@ -88,3 +93,117 @@ class GCEL:
         # Ensure ordering and names preserved exactly
         by_name = {c.name: c for c in out}
         return [by_name.get(c.name, c) for c in cs]
+
+
+@dataclass(frozen=True)
+class GCELV2Outcome:
+    contracts: List[Contract]
+    accepted: bool
+    baseline_score: float
+    candidate_score: float
+    fitness: Dict[str, float]
+
+
+class GCELV2:
+    """
+    Cycle 2 contract evolution loop.
+
+    Features:
+    - uses reliability and cost priors
+    - budget-aware fitness aggregation
+    - bounded deterministic mutation
+    - acceptance gate only when eval score improves
+    """
+
+    def __init__(
+        self,
+        *,
+        mutation_step: float = 0.03,
+        reliability_step: float = 0.03,
+        cost_step: float = 0.03,
+        min_improvement: float = 1.0e-6,
+        seed: int = 0,
+    ) -> None:
+        self.mutation_step = float(mutation_step)
+        self.reliability_step = float(reliability_step)
+        self.cost_step = float(cost_step)
+        self.min_improvement = float(min_improvement)
+        self.rng = random.Random(int(seed))
+
+    def _clamped_contract(self, c: Contract) -> Contract:
+        return replace(
+            c,
+            competence=float(_clamp(float(c.competence), 0.05, 0.99)),
+            reliability=float(_clamp(float(c.reliability), 0.05, 0.99)),
+            cost_prior=float(_clamp(float(c.cost_prior), 0.01, 0.99)),
+        )
+
+    def _mutate(self, c: Contract) -> Contract:
+        return replace(
+            c,
+            competence=float(_clamp(float(c.competence) + self.rng.uniform(-self.mutation_step, self.mutation_step), 0.05, 0.99)),
+            reliability=float(
+                _clamp(float(c.reliability) + self.rng.uniform(-self.reliability_step, self.reliability_step), 0.05, 0.99)
+            ),
+            cost_prior=float(_clamp(float(c.cost_prior) + self.rng.uniform(-self.cost_step, self.cost_step), 0.01, 0.99)),
+        )
+
+    def compute_fitness(self, metrics: Mapping[str, Mapping[str, float] | float]) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        for name, value in metrics.items():
+            if isinstance(value, Mapping):
+                oracle_score = _clamp(float(value.get("oracle_score", 0.0)), 0.0, 1.0)
+                eval_success = _clamp(float(value.get("eval_success", oracle_score)), 0.0, 1.0)
+                budget_efficiency = _clamp(float(value.get("budget_efficiency", 0.5)), 0.0, 1.0)
+            else:
+                oracle_score = _clamp(float(value), 0.0, 1.0)
+                eval_success = oracle_score
+                budget_efficiency = 0.5
+
+            score = (0.45 * oracle_score) + (0.35 * eval_success) + (0.20 * budget_efficiency)
+            out[str(name)] = float(_clamp(score, 0.0, 1.0))
+        return out
+
+    def _evaluate(
+        self,
+        contracts: Sequence[Contract],
+        metrics: Mapping[str, Mapping[str, float] | float],
+        evaluator: Callable[[Sequence[Contract], Dict[str, float]], float] | None,
+    ) -> tuple[float, Dict[str, float]]:
+        fitness = self.compute_fitness(metrics)
+        if evaluator is not None:
+            return float(evaluator(contracts, fitness)), fitness
+
+        if not contracts:
+            return 0.0, fitness
+
+        accum = 0.0
+        for c in contracts:
+            base = float(fitness.get(c.name, 0.0))
+            value = (0.75 * base) + (0.15 * float(c.reliability)) + (0.10 * (1.0 - float(c.cost_prior)))
+            accum += _clamp(value, 0.0, 1.0)
+        return float(accum / float(len(contracts))), fitness
+
+    def evolve(
+        self,
+        contracts: Sequence[Contract],
+        metrics: Mapping[str, Mapping[str, float] | float],
+        *,
+        evaluator: Callable[[Sequence[Contract], Dict[str, float]], float] | None = None,
+    ) -> GCELV2Outcome:
+        baseline = [self._clamped_contract(c) for c in contracts]
+        baseline_score, fitness = self._evaluate(baseline, metrics, evaluator)
+
+        candidate = [self._mutate(c) for c in baseline]
+        candidate_score, _ = self._evaluate(candidate, metrics, evaluator)
+
+        accepted = bool(candidate_score >= (baseline_score + self.min_improvement))
+        final_contracts = candidate if accepted else baseline
+
+        return GCELV2Outcome(
+            contracts=list(final_contracts),
+            accepted=accepted,
+            baseline_score=float(baseline_score),
+            candidate_score=float(candidate_score),
+            fitness=fitness,
+        )

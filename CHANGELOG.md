@@ -2,6 +2,41 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 002 — Real MoAA lift (Router/Oracle/Swarm/GCEL v2)
+- Added `ARCHITECTURE_CYCLE2.md` with exact v2 data flow, interfaces, formulas, and rubric.
+- Added RouterV2 (`src/moaa_prime/router/router_v2.py`) with:
+  - deterministic seeded scoring
+  - exploration vs exploitation probability
+  - budget/history/memory-aware expected utility
+  - ranked rationale + component breakdown
+- Added OracleV2 in `src/moaa_prime/oracle/verifier.py` with:
+  - weighted `[0,1]` rubric components (`correctness_proxy`, `coherence`, `constraint_adherence`, `safety_overreach`, `grounding`)
+  - consistency check API for repeated scoring variance
+  - pluggable JSON/YAML rubric support
+  - bundled default rubric file `src/moaa_prime/oracle/rubric_v2.yaml`
+- Upgraded swarm manager (`src/moaa_prime/swarm/manager.py`) for mode-aware v1/v2 execution:
+  - v2 candidate generation/scoring/selection
+  - optional top-2 cross-check round (stubbed unless enabled)
+  - confidence estimation
+  - structured trace payload (`router/swarm/oracle/final`)
+- Extended contract schema (`src/moaa_prime/contracts/contract.py`) with `reliability` and `cost_prior` priors.
+- Added GCELV2 in `src/moaa_prime/evolution/gcel.py`:
+  - fitness aggregation across oracle/eval/budget
+  - bounded deterministic mutations
+  - gated acceptance only on evaluator improvement
+- Upgraded app composition root (`src/moaa_prime/core/app.py`) to support A/B mode wiring and trace file emission:
+  - `reports/trace_<runid>.json`
+- Upgraded eval stack:
+  - `src/moaa_prime/eval/runner.py` now mode-aware with oracle/entropy/cost/latency proxies
+  - `src/moaa_prime/eval/report.py` now writes aggregate metrics
+  - added `scripts/eval_compare.py` for v1 vs v2 lift report (`reports/eval_compare.json`)
+- Updated runnable scripts (`scripts/demo_run.py`, `scripts/bench_run.py`, `scripts/eval_run.py`) for deterministic Cycle 2 output.
+- Added deterministic Cycle 2 tests:
+  - `tests/test_cycle2_router_v2.py`
+  - `tests/test_cycle2_oracle_v2.py`
+  - `tests/test_cycle2_swarm_v2.py`
+  - `tests/test_cycle2_gcel_v2.py`
+
 ## Cycle 001 — CLI + docs hard-polish
 - Added module entrypoint: `src/moaa_prime/__main__.py`.
 - Updated CLI parser to support:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,13 +14,34 @@ from moaa_prime.util.json_safe import dumps_pretty
 
 
 def main() -> int:
-    app = MoAAPrime()
+    mode = (os.getenv("MOAA_DEMO_MODE") or "v2").strip().lower()
+    seed = int(os.getenv("MOAA_DEMO_SEED") or "7")
+
+    app = MoAAPrime(mode=mode, seed=seed)
+
+    swarm = app.run_swarm(
+        "Explain why 1/0 is undefined, then give a safe Python example.",
+        task_id="demo",
+        mode=mode,
+        rounds=3,
+        top_k=2,
+        cross_check=False,
+        run_id=f"demo_{mode}",
+    )
 
     out = {
-        "once_math": app.run_once("Solve: 2x + 3 = 7. Return only x.", task_id="demo"),
-        "once_code": app.run_once("Write Python: function add(a,b) returns a+b", task_id="demo"),
-        "swarm": app.run_swarm("Explain why 1/0 is undefined, then give a safe Python example.", task_id="demo"),
-        "evolve": app.evolve_contracts({"math-agent": 1.0, "code-agent": 0.2}),
+        "mode": mode,
+        "seed": seed,
+        "once_math": app.run_once("Solve: 2x + 3 = 7. Return only x.", task_id="demo", mode=mode),
+        "once_code": app.run_once("Write Python: function add(a,b) returns a+b", task_id="demo", mode=mode),
+        "swarm": swarm,
+        "evolve": app.evolve_contracts(
+            {
+                "math-agent": {"oracle_score": 0.92, "eval_success": 0.90, "budget_efficiency": 0.82},
+                "code-agent": {"oracle_score": 0.73, "eval_success": 0.68, "budget_efficiency": 0.76},
+            },
+            mode=mode,
+        ),
     }
 
     Path("reports").mkdir(parents=True, exist_ok=True)
