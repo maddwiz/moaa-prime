@@ -80,12 +80,17 @@ Expected outputs:
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/tool_first_eval.json`
+- `reports/eval_tool_first.json`
 - `reports/eval_compare.json`
 - `reports/dual_gated_eval.json`
 - `reports/eval_matrix.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`
 - `reports/final_report.json`
+
+Schema notes:
+- `reports/eval_report.json`, `reports/eval_tool_first.json`, `reports/eval_compare.json`, `reports/dual_gated_eval.json`, `reports/eval_matrix.json`, and `reports/eval_router.json` all emit `schema_version: "1.1"` and include stable top-level `summary` + numeric `counts`.
+- `scripts/eval_tool_first.py` writes both `reports/tool_first_eval.json` and compatibility alias `reports/eval_tool_first.json`.
 
 `reports/` is generated output and should stay untracked.
 
@@ -165,9 +170,16 @@ Definition of done:
 - On each successful cycle, autopilot runs `scripts/check_done.py`.
 - Criteria include full-handoff scope (roadmap PR-0..PR-8 + mandatory upgrade items).
 - When criteria are met, cycle status becomes `done` and the loop exits automatically.
+- Hardened gate includes RouterV3 non-regression (`routing_accuracy.delta >= 0`, `oracle_score_gain.delta >= 0`), dual-gate saturation guard (`trigger_rate < 1.0`), and eval-matrix run-level schema checks.
 
 Run done-check manually:
 
 ```bash
 python3 scripts/check_done.py --criteria .codex/done_criteria.json --report .codex/runs/autopilot/done_check.json
 ```
+
+## Known Limits
+
+- RouterV3 still trains on a compact deterministic dataset; broad generalization requires larger and more diverse traces.
+- Dual-gate still uses heuristic ambiguity/constraint signals; future work should learn trigger policy from held-out regressions.
+- Stub-provider defaults are deterministic and contract-safe, but they are not representative of production model quality.

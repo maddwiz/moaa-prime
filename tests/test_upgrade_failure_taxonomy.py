@@ -178,6 +178,20 @@ def test_classification_helpers_and_report_snippets() -> None:
                             "intent": "code",
                             "chosen_agent": "math-agent",
                         },
+                        "answer_object": {
+                            "final": "fallback text",
+                            "tools": ["python-verify", "tool-unverified"],
+                            "confidence": 0.21,
+                            "notes": ["verification:fail(compile)"],
+                            "trace": {
+                                "verification": {
+                                    "status": "fail",
+                                    "passed": False,
+                                    "stage": "compile",
+                                    "source": "result.meta.tool_first.prompt_probe.verification",
+                                }
+                            },
+                        },
                         "result": {
                             "meta": {
                                 "memory": {"local_hits": -1},

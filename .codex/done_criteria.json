@@ -30,6 +30,7 @@
     "reports/demo_run.json",
     "reports/bench.json",
     "reports/eval_report.json",
+    "reports/eval_tool_first.json",
     "reports/tool_first_eval.json",
     "reports/eval_compare.json",
     "reports/dual_gated_eval.json",
@@ -133,6 +134,16 @@
       "timeout_sec": 2400
     },
     {
+      "name": "eval_matrix_run_schema_fields",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));runs=((data.get(\"matrix\") or {}).get(\"runs\") or []);keys=(\"num_cases\",\"scored_cases\",\"passed\",\"pass_rate\",\"avg_oracle_score\",\"avg_latency_proxy\");ok=isinstance(runs,list) and bool(runs) and all(isinstance(r,dict) and all((k in r) and (r.get(k) is not None) for k in keys) for r in runs);missing=[f\"{i}:{k}\" for i,r in enumerate(runs) for k in keys if (not isinstance(r,dict)) or (k not in r) or (r.get(k) is None)];print(\"ok\" if ok else f\"eval_matrix_run_schema_invalid missing={missing}\");sys.exit(0 if ok else 1)'; else python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));runs=((data.get(\"matrix\") or {}).get(\"runs\") or []);keys=(\"num_cases\",\"scored_cases\",\"passed\",\"pass_rate\",\"avg_oracle_score\",\"avg_latency_proxy\");ok=isinstance(runs,list) and bool(runs) and all(isinstance(r,dict) and all((k in r) and (r.get(k) is not None) for k in keys) for r in runs);missing=[f\"{i}:{k}\" for i,r in enumerate(runs) for k in keys if (not isinstance(r,dict)) or (k not in r) or (r.get(k) is None)];print(\"ok\" if ok else f\"eval_matrix_run_schema_invalid missing={missing}\");sys.exit(0 if ok else 1)'; fi",
+      "timeout_sec": 180
+    },
+    {
+      "name": "tool_verification_targeted_code_math_non_regression",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));rows=((data.get(\"per_case_diffs\") or {}).get(\"tool_first_on_vs_off\") or []);targets=[r for r in rows if isinstance(r,dict) and str(r.get(\"case_id\",\"\")).startswith((\"code_\",\"math_\"))];has_code=any(str(r.get(\"case_id\",\"\")).startswith(\"code_\") for r in targets);has_math=any(str(r.get(\"case_id\",\"\")).startswith(\"math_\") for r in targets);deltas=[float(r.get(\"tool_verified_delta\")) for r in targets];ok=bool(targets) and has_code and has_math and all(v >= 0.0 for v in deltas);print(\"ok\" if ok else f\"tool_verification_targeted_non_regression_failed has_code={has_code} has_math={has_math} deltas={deltas}\");sys.exit(0 if ok else 1)'; else python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));rows=((data.get(\"per_case_diffs\") or {}).get(\"tool_first_on_vs_off\") or []);targets=[r for r in rows if isinstance(r,dict) and str(r.get(\"case_id\",\"\")).startswith((\"code_\",\"math_\"))];has_code=any(str(r.get(\"case_id\",\"\")).startswith(\"code_\") for r in targets);has_math=any(str(r.get(\"case_id\",\"\")).startswith(\"math_\") for r in targets);deltas=[float(r.get(\"tool_verified_delta\")) for r in targets];ok=bool(targets) and has_code and has_math and all(v >= 0.0 for v in deltas);print(\"ok\" if ok else f\"tool_verification_targeted_non_regression_failed has_code={has_code} has_math={has_math} deltas={deltas}\");sys.exit(0 if ok else 1)'; fi",
+      "timeout_sec": 180
+    },
+    {
       "name": "train_router",
       "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/train_router.py; else python scripts/train_router.py; fi",
       "timeout_sec": 1800
@@ -185,6 +196,27 @@
       "name": "dual_gate_eval_non_regression",
       "file": "reports/dual_gated_eval.json",
       "path": "summary.dual_gated.pass_rate_delta_vs_baseline",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "dual_gate_trigger_rate_below_full_activation",
+      "file": "reports/dual_gated_eval.json",
+      "path": "summary.dual_gated.trigger_rate",
+      "op": "lt",
+      "value": 1.0
+    },
+    {
+      "name": "router_routing_accuracy_non_regression",
+      "file": "reports/eval_router.json",
+      "path": "routing_accuracy.delta",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "router_oracle_score_non_regression",
+      "file": "reports/eval_router.json",
+      "path": "oracle_score_gain.delta",
       "op": "ge",
       "value": 0.0
     },

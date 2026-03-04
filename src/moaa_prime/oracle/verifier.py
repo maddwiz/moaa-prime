@@ -23,33 +23,92 @@ def _coerce_mapping(value: Any) -> Mapping[str, Any]:
     return {}
 
 
-def _extract_verification_signal(answer_metadata: Mapping[str, Any] | None) -> Dict[str, Any]:
-    meta = _coerce_mapping(answer_metadata)
-    tool_meta = _coerce_mapping(meta.get("tool_first"))
-    verification = _coerce_mapping(tool_meta.get("verification"))
-    if not verification:
-        return {}
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "pass", "passed", "ok", "success", "succeeded"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "fail", "failed", "error"}:
+            return False
+    return bool(default)
 
-    stage = str(verification.get("stage", "") or "")
-    status = str(verification.get("status", "") or "").lower()
-    passed = bool(verification.get("passed", status == "pass"))
+
+def _normalize_stage(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _signal_from_verification_payload(
+    verification: Mapping[str, Any],
+    *,
+    source: str,
+    tool_attempted: bool,
+    tool_success: bool,
+) -> Dict[str, Any]:
+    stage = _normalize_stage(verification.get("stage"))
+    raw_status = str(verification.get("status", "") or "").strip().lower()
+    passed = _coerce_bool(verification.get("passed"), default=(raw_status == "pass"))
+    status = raw_status if raw_status in {"pass", "fail"} else ("pass" if passed else "fail")
+    exec_ran = _coerce_bool(verification.get("exec_ran"), default=(stage == "exec" and passed))
     return {
-        "status": "pass" if passed else "fail",
+        "status": status,
         "passed": passed,
         "stage": stage,
         "error_type": verification.get("error_type"),
         "error_message": verification.get("error_message"),
-        "exec_ran": bool(verification.get("exec_ran", False)),
+        "exec_ran": exec_ran,
+        "source": source,
+        "tool_attempted": bool(tool_attempted),
+        "tool_success": bool(tool_success),
+        "dominant_eligible": bool(tool_attempted and tool_success and passed),
     }
+
+
+def _extract_verification_signal(answer_metadata: Mapping[str, Any] | None) -> Dict[str, Any]:
+    meta = _coerce_mapping(answer_metadata)
+    tool_meta = _coerce_mapping(meta.get("tool_first"))
+    tool_attempted = _coerce_bool(tool_meta.get("attempted"), default=False)
+    tool_success = _coerce_bool(tool_meta.get("success"), default=False)
+    verification = _coerce_mapping(tool_meta.get("verification"))
+    if verification:
+        return _signal_from_verification_payload(
+            verification,
+            source="tool_first.verification",
+            tool_attempted=tool_attempted,
+            tool_success=tool_success,
+        )
+
+    # Backward-compatible fallback for deterministic tool outcomes that do not
+    # carry a nested verification object (for example, math tool-first success).
+    if tool_attempted and "success" in tool_meta:
+        stage = _normalize_stage(tool_meta.get("mode") or tool_meta.get("stage") or tool_meta.get("solver") or "tool")
+        passed = bool(tool_success)
+        return {
+            "status": "pass" if passed else "fail",
+            "passed": passed,
+            "stage": stage,
+            "error_type": tool_meta.get("error_type"),
+            "error_message": tool_meta.get("error") or tool_meta.get("error_message"),
+            "exec_ran": False,
+            "source": "tool_first.outcome",
+            "tool_attempted": bool(tool_attempted),
+            "tool_success": bool(tool_success),
+            "dominant_eligible": bool(tool_attempted and tool_success and passed),
+        }
+
+    return {}
 
 
 def _verification_score_delta(signal: Mapping[str, Any]) -> float:
     if not signal:
         return 0.0
 
-    passed = bool(signal.get("passed", False))
-    stage = str(signal.get("stage", "") or "")
-    exec_ran = bool(signal.get("exec_ran", False))
+    passed = _coerce_bool(signal.get("passed"), default=False)
+    stage = _normalize_stage(signal.get("stage"))
+    exec_ran = _coerce_bool(signal.get("exec_ran"), default=False)
 
     if passed:
         delta = 0.05
@@ -61,6 +120,46 @@ def _verification_score_delta(signal: Mapping[str, Any]) -> float:
     if stage == "exec" and exec_ran:
         delta -= 0.02
     return _clamp(delta, -0.20, 0.0)
+
+
+def _verification_dominance_floor(signal: Mapping[str, Any]) -> float | None:
+    if not signal:
+        return None
+    if not _coerce_bool(signal.get("passed"), default=False):
+        return None
+    if not _coerce_bool(signal.get("dominant_eligible"), default=False):
+        return None
+
+    stage = _normalize_stage(signal.get("stage"))
+    exec_ran = _coerce_bool(signal.get("exec_ran"), default=False)
+    if stage == "exec" and exec_ran:
+        return 0.97
+    if stage == "compile":
+        return 0.95
+    if stage in {"equation", "expression", "solve", "math", "sympy"}:
+        return 0.94
+    return 0.93
+
+
+def _apply_verification_calibration(base_score: float, signal: Mapping[str, Any]) -> tuple[float, float, Dict[str, Any] | None]:
+    if not signal:
+        score = _clamp(base_score, 0.0, 1.0)
+        return score, 0.0, None
+
+    legacy_delta = _verification_score_delta(signal)
+    score = _clamp(base_score + legacy_delta, 0.0, 1.0)
+
+    floor = _verification_dominance_floor(signal)
+    policy = "legacy_delta"
+    if floor is not None:
+        score = _clamp(max(score, float(floor)), 0.0, 1.0)
+        policy = "dominant_pass_floor"
+
+    return score, float(score - base_score), {
+        "policy": policy,
+        "legacy_delta": float(legacy_delta),
+        "dominance_floor": floor,
+    }
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
@@ -135,18 +234,20 @@ class OracleVerifier:
                 reason = "code-related response"
 
         signal = _extract_verification_signal(answer_metadata)
-        delta = _verification_score_delta(signal)
-        score = _clamp(base_score + delta, 0.0, 1.0)
+        score, verification_delta, verification_calibration = _apply_verification_calibration(base_score, signal)
 
         if signal:
             reason = f"{reason}; verifier={signal.get('status', 'unknown')}"
+            if verification_calibration and verification_calibration.get("policy") == "dominant_pass_floor":
+                reason = f"{reason}; calibration=dominant-pass"
             return OracleVerdict(
                 score=score,
                 reason=reason,
                 meta={
                     "oracle": "v1",
                     "base_score": base_score,
-                    "verification_delta": delta,
+                    "verification_delta": verification_delta,
+                    "verification_calibration": verification_calibration,
                     "verification_signal": dict(signal),
                 },
             )
@@ -377,8 +478,7 @@ class OracleV2:
         base_score = _clamp(base_score, 0.0, 1.0)
 
         signal = _extract_verification_signal(answer_metadata)
-        delta = _verification_score_delta(signal)
-        score = _clamp(base_score + delta, 0.0, 1.0)
+        score, verification_delta, verification_calibration = _apply_verification_calibration(base_score, signal)
 
         reason = (
             f"weighted_oracle_v2; correctness={components['correctness_proxy']:.2f}; "
@@ -386,6 +486,8 @@ class OracleV2:
         )
         if signal:
             reason = f"{reason}; verifier={signal.get('status', 'unknown')}"
+            if verification_calibration and verification_calibration.get("policy") == "dominant_pass_floor":
+                reason = f"{reason}; calibration=dominant-pass"
 
         meta: Dict[str, Any] = {
             "oracle": "v2",
@@ -395,7 +497,8 @@ class OracleV2:
         }
         if signal:
             meta["base_score"] = base_score
-            meta["verification_delta"] = delta
+            meta["verification_delta"] = verification_delta
+            meta["verification_calibration"] = verification_calibration
             meta["verification_signal"] = dict(signal)
 
         return OracleVerdict(

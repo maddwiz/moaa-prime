@@ -61,6 +61,10 @@ def _delta(v1: float, v2: float) -> float:
     return float(v2 - v1)
 
 
+def _count_passed(per_case: list[dict[str, object]]) -> int:
+    return int(sum(1 for row in per_case if float(row.get("v2_minus_v1", 0.0)) >= 0.0))
+
+
 def main() -> int:
     seed = int(os.getenv("MOAA_EVAL_COMPARE_SEED") or "11")
     cases = _load_cases()
@@ -90,6 +94,12 @@ def main() -> int:
         )
 
     win_rate = float(wins / max(1, len(per_case)))
+    passed = _count_passed(per_case)
+    counts = {
+        "num_cases": int(len(cases)),
+        "scored_cases": int(len(per_case)),
+        "passed": int(passed),
+    }
 
     # Emit deterministic trace files for one representative swarm prompt in both modes.
     trace_paths = []
@@ -107,8 +117,32 @@ def main() -> int:
             trace_paths.append(str(out_v2["trace_path"]))
 
     report = {
+        "suite": "eval_compare",
+        "schema_version": "1.1",
         "seed": seed,
-        "num_cases": len(cases),
+        "counts": counts,
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
+        "pass_rate": float(passed / max(1, len(per_case))),
+        "summary": {
+            "counts": counts,
+            "metrics": {
+                "avg_oracle_score_v1": agg_v1["avg_oracle_score"],
+                "avg_oracle_score_v2": agg_v2["avg_oracle_score"],
+                "avg_oracle_score_delta": _delta(agg_v1["avg_oracle_score"], agg_v2["avg_oracle_score"]),
+                "win_rate_v2_over_v1": win_rate,
+                "routing_entropy_v1": agg_v1["routing_entropy"],
+                "routing_entropy_v2": agg_v2["routing_entropy"],
+                "routing_entropy_delta": _delta(agg_v1["routing_entropy"], agg_v2["routing_entropy"]),
+                "avg_cost_proxy_v1": agg_v1["avg_cost_proxy"],
+                "avg_cost_proxy_v2": agg_v2["avg_cost_proxy"],
+                "avg_cost_proxy_delta": _delta(agg_v1["avg_cost_proxy"], agg_v2["avg_cost_proxy"]),
+                "avg_latency_proxy_v1": agg_v1["avg_latency_proxy"],
+                "avg_latency_proxy_v2": agg_v2["avg_latency_proxy"],
+                "avg_latency_proxy_delta": _delta(agg_v1["avg_latency_proxy"], agg_v2["avg_latency_proxy"]),
+            },
+        },
         "avg_oracle_score": {
             "v1": agg_v1["avg_oracle_score"],
             "v2": agg_v2["avg_oracle_score"],

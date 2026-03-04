@@ -101,7 +101,7 @@ class GatedDualBrainSelector:
         self,
         *,
         low_confidence_threshold: float = 0.60,
-        high_ambiguity_threshold: float = 0.55,
+        high_ambiguity_threshold: float = 0.85,
     ) -> None:
         self.low_confidence_threshold = _clamp(float(low_confidence_threshold), 0.0, 1.0)
         self.high_ambiguity_threshold = _clamp(float(high_ambiguity_threshold), 0.0, 1.0)

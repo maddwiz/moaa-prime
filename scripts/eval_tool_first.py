@@ -84,6 +84,39 @@ def _pass_rate(values: list[bool]) -> float:
     return float(sum(1 for v in values if v) / len(values))
 
 
+def _count_passed(values: list[bool]) -> int:
+    return int(sum(1 for v in values if v))
+
+
+def _section_block(
+    *,
+    num_cases: int,
+    baseline_pass_rate: float,
+    tool_first_pass_rate: float,
+    cases: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    rows = list(cases or [])
+    baseline_flags = [bool(r.get("baseline_pass", False)) for r in rows] if rows else []
+    tool_flags = [bool(r.get("tool_first_pass", False)) for r in rows] if rows else []
+    passed = _count_passed(tool_flags) if rows else int(round(float(tool_first_pass_rate) * float(max(0, num_cases))))
+    baseline_passed = (
+        _count_passed(baseline_flags) if rows else int(round(float(baseline_pass_rate) * float(max(0, num_cases))))
+    )
+    scored_cases = int(num_cases)
+    block: dict[str, object] = {
+        "num_cases": int(num_cases),
+        "scored_cases": scored_cases,
+        "passed": int(passed),
+        "baseline_passed": int(baseline_passed),
+        "baseline_pass_rate": float(baseline_pass_rate),
+        "tool_first_pass_rate": float(tool_first_pass_rate),
+        "pass_rate_delta": float(tool_first_pass_rate - baseline_pass_rate),
+    }
+    if rows:
+        block["cases"] = rows
+    return block
+
+
 def main() -> int:
     math_cases = [
         {"id": "math_linear", "prompt": "Solve 3*x + 1 = 13 for x", "expected": {"4"}},
@@ -141,35 +174,78 @@ def main() -> int:
         [bool(r["tool_first_pass"]) for r in math_rows] + [bool(r["tool_first_pass"]) for r in code_rows]
     )
 
+    math_block = _section_block(
+        num_cases=len(math_rows),
+        baseline_pass_rate=math_baseline,
+        tool_first_pass_rate=math_tool,
+        cases=math_rows,
+    )
+    code_block = _section_block(
+        num_cases=len(code_rows),
+        baseline_pass_rate=code_baseline,
+        tool_first_pass_rate=code_tool,
+        cases=code_rows,
+    )
+    overall_block = _section_block(
+        num_cases=len(math_rows) + len(code_rows),
+        baseline_pass_rate=overall_baseline,
+        tool_first_pass_rate=overall_tool,
+    )
+
+    counts = {
+        "num_cases": int(overall_block["num_cases"]),
+        "scored_cases": int(overall_block["scored_cases"]),
+        "passed": int(overall_block["passed"]),
+    }
+
     payload = {
         "suite": "pr1_tool_first",
-        "math": {
-            "num_cases": len(math_rows),
-            "baseline_pass_rate": math_baseline,
-            "tool_first_pass_rate": math_tool,
-            "pass_rate_delta": float(math_tool - math_baseline),
-            "cases": math_rows,
+        "schema_version": "1.1",
+        "counts": counts,
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
+        "pass_rate": float(overall_block["tool_first_pass_rate"]),
+        "summary": {
+            "counts": counts,
+            "metrics": {
+                "baseline_pass_rate": float(overall_block["baseline_pass_rate"]),
+                "tool_first_pass_rate": float(overall_block["tool_first_pass_rate"]),
+                "pass_rate_delta": float(overall_block["pass_rate_delta"]),
+            },
+            "categories": {
+                "math": {
+                    "num_cases": int(math_block["num_cases"]),
+                    "scored_cases": int(math_block["scored_cases"]),
+                    "passed": int(math_block["passed"]),
+                    "baseline_pass_rate": float(math_block["baseline_pass_rate"]),
+                    "tool_first_pass_rate": float(math_block["tool_first_pass_rate"]),
+                    "pass_rate_delta": float(math_block["pass_rate_delta"]),
+                },
+                "code": {
+                    "num_cases": int(code_block["num_cases"]),
+                    "scored_cases": int(code_block["scored_cases"]),
+                    "passed": int(code_block["passed"]),
+                    "baseline_pass_rate": float(code_block["baseline_pass_rate"]),
+                    "tool_first_pass_rate": float(code_block["tool_first_pass_rate"]),
+                    "pass_rate_delta": float(code_block["pass_rate_delta"]),
+                },
+            },
         },
-        "code": {
-            "num_cases": len(code_rows),
-            "baseline_pass_rate": code_baseline,
-            "tool_first_pass_rate": code_tool,
-            "pass_rate_delta": float(code_tool - code_baseline),
-            "cases": code_rows,
-        },
-        "overall": {
-            "num_cases": len(math_rows) + len(code_rows),
-            "baseline_pass_rate": overall_baseline,
-            "tool_first_pass_rate": overall_tool,
-            "pass_rate_delta": float(overall_tool - overall_baseline),
-        },
+        "math": math_block,
+        "code": code_block,
+        "overall": overall_block,
     }
 
     reports = Path("reports")
     reports.mkdir(parents=True, exist_ok=True)
-    out_path = reports / "tool_first_eval.json"
-    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Wrote {out_path}")
+    out_primary = reports / "tool_first_eval.json"
+    out_compat = reports / "eval_tool_first.json"
+    serialized = json.dumps(payload, indent=2)
+    out_primary.write_text(serialized, encoding="utf-8")
+    out_compat.write_text(serialized, encoding="utf-8")
+    print(f"Wrote {out_primary}")
+    print(f"Wrote {out_compat}")
     return 0
 
 

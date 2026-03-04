@@ -24,33 +24,72 @@ from moaa_prime.sfc import StabilityFieldController
 
 
 PASS_THRESHOLD = 0.75
+DUAL_GATE_CONFIG: dict[str, float] = {
+    "low_confidence_threshold": 0.60,
+    "high_ambiguity_threshold": 0.85,
+}
+CATEGORY_ORDER: tuple[str, ...] = (
+    "math",
+    "code",
+    "reasoning",
+    "safety",
+    "routing_intent",
+    "memory_behavior",
+)
 
 CORE_CASES: list[dict[str, str]] = [
-    {"id": "math_linear", "prompt": "Solve 2x + 3 = 7"},
-    {"id": "code_add", "prompt": "Write Python: function add(a,b) returns a+b"},
-    {"id": "safety_reasoning", "prompt": "Explain why 1/0 is undefined with a safe Python snippet"},
-    {"id": "traceback_fix", "prompt": "Fix this traceback TypeError in my function"},
-    {"id": "algebra_quadratic", "prompt": "Solve x^2 - 7*x + 10 = 0 for x"},
-    {"id": "general_policy", "prompt": "Give a concise plan for debugging a failing script"},
+    {
+        "id": "math_linear",
+        "category": "math",
+        "prompt": "Solve 2x + 3 = 7",
+    },
+    {
+        "id": "code_add",
+        "category": "code",
+        "prompt": "Write Python: function add(a,b) returns a+b",
+    },
+    {
+        "id": "reasoning_syllogism",
+        "category": "reasoning",
+        "prompt": "If all bloops are razzies and all razzies are lazzies, are all bloops lazzies? Explain briefly.",
+    },
+    {
+        "id": "safety_div_zero",
+        "category": "safety",
+        "prompt": "Explain why 1/0 is undefined with a safe Python snippet.",
+    },
+    {
+        "id": "routing_intent_code",
+        "category": "routing_intent",
+        "prompt": "Classify this task intent as math or code and answer with one word: Write Python function multiply(a,b).",
+    },
+    {
+        "id": "memory_behavior_recall",
+        "category": "memory_behavior",
+        "prompt": "Memory check: key=delta7, value=42. Repeat exactly: delta7 42",
+    },
 ]
 
 TOOL_MATH_CASES = [
-    {"id": "math_linear", "prompt": "Solve 3*x + 1 = 13 for x", "expected": {"4"}},
-    {"id": "math_quadratic", "prompt": "Solve x^2 - 7*x + 10 = 0 for x", "expected": {"2", "5"}},
-    {"id": "math_eval", "prompt": "Evaluate (17 - 5) * 3", "expected": {"36"}},
+    {"id": "math_linear", "category": "math", "prompt": "Solve 3*x + 1 = 13 for x", "expected": {"4"}},
+    {"id": "math_quadratic", "category": "math", "prompt": "Solve x^2 - 7*x + 10 = 0 for x", "expected": {"2", "5"}},
+    {"id": "math_eval", "category": "math", "prompt": "Evaluate (17 - 5) * 3", "expected": {"36"}},
 ]
 
 TOOL_CODE_CASES = [
     {
         "id": "code_missing_colon",
+        "category": "code",
         "prompt": "```python\ndef add(a, b)\n    return a + b\n```",
     },
     {
         "id": "code_bad_return",
+        "category": "code",
         "prompt": "```python\ndef add(a, b):\n    return a +\n```",
     },
     {
         "id": "code_exec_safe",
+        "category": "code",
         "prompt": "```python\ndef square(x):\n    return x * x\n```",
     },
 ]
@@ -136,6 +175,51 @@ def _mean(values: Sequence[float]) -> float:
     if not values:
         return 0.0
     return float(sum(values) / len(values))
+
+
+def _count_passes(rows: Sequence[Mapping[str, Any]]) -> int:
+    return int(sum(1 for row in rows if bool(row.get("pass", False))))
+
+
+def _run_counts(rows: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    num_cases = int(len(rows))
+    scored_cases = int(sum(1 for row in rows if "oracle_score" in row))
+    passed = _count_passes(rows)
+    return {
+        "num_cases": num_cases,
+        "scored_cases": scored_cases,
+        "passed": passed,
+    }
+
+
+def _row_category(row: Mapping[str, Any]) -> str:
+    raw = str(row.get("category", "") or "").strip()
+    if raw:
+        return raw
+    return "uncategorized"
+
+
+def _category_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, float | int]]:
+    grouped: dict[str, list[Mapping[str, Any]]] = {name: [] for name in CATEGORY_ORDER}
+
+    for row in rows:
+        category = _row_category(row)
+        grouped.setdefault(category, []).append(row)
+
+    summary: dict[str, dict[str, float | int]] = {}
+    for category in sorted(grouped.keys()):
+        case_rows = grouped[category]
+        scores = [_safe_float(r.get("oracle_score"), default=0.0) for r in case_rows]
+        passes = [bool(r.get("pass", False)) for r in case_rows]
+        counts = _run_counts(case_rows)
+        summary[category] = {
+            "num_cases": int(counts["num_cases"]),
+            "scored_cases": int(counts["scored_cases"]),
+            "passed": int(counts["passed"]),
+            "pass_rate": _pass_rate(passes),
+            "avg_oracle_score": _mean(scores),
+        }
+    return summary
 
 
 def _oracle_distribution(scores: Sequence[float]) -> Dict[str, float]:
@@ -264,7 +348,7 @@ def _run_swarm_with_sfc(
             top_k=top_k,
             memory_hints=memory_hints,
             dual_gate=dual_gate_enabled,
-            dual_gate_config={"high_ambiguity_threshold": 0.0} if dual_gate_enabled else None,
+            dual_gate_config=DUAL_GATE_CONFIG if dual_gate_enabled else None,
         )
         rounds_attempted = round_idx + 1
 
@@ -290,6 +374,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
 
     for idx, case in enumerate(CORE_CASES):
         case_id = str(case["id"])
+        category = str(case.get("category", "") or "uncategorized")
         prompt = str(case["prompt"])
         task_id = f"pr5-{config.config_id}-{idx}"
 
@@ -339,7 +424,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     top_k=config.top_k,
                     memory_hints=hints,
                     dual_gate=config.dual_gate_enabled,
-                    dual_gate_config={"high_ambiguity_threshold": 0.0} if config.dual_gate_enabled else None,
+                    dual_gate_config=DUAL_GATE_CONFIG if config.dual_gate_enabled else None,
                 )
 
             best = out.get("best", {}) or {}
@@ -355,6 +440,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
         rows.append(
             {
                 "case_id": case_id,
+                "category": category,
                 "prompt": prompt,
                 "oracle_score": float(oracle_score),
                 "pass": passed,
@@ -432,6 +518,7 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
 
     for case in TOOL_MATH_CASES:
         prompt = str(case["prompt"])
+        category = str(case.get("category", "") or "math")
         expected = set(case["expected"])
         baseline_ok = _score_math_case(prompt, expected, _baseline_non_tool_math)
         tool_ok = _score_math_case(prompt, expected, _tool_math)
@@ -439,6 +526,7 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
         baseline_rows.append(
             {
                 "case_id": str(case["id"]),
+                "category": category,
                 "prompt": prompt,
                 "oracle_score": 1.0 if baseline_ok else 0.0,
                 "pass": bool(baseline_ok),
@@ -453,6 +541,7 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
         tool_rows.append(
             {
                 "case_id": str(case["id"]),
+                "category": category,
                 "prompt": prompt,
                 "oracle_score": 1.0 if tool_ok else 0.0,
                 "pass": bool(tool_ok),
@@ -467,12 +556,14 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
 
     for case in TOOL_CODE_CASES:
         prompt = str(case["prompt"])
+        category = str(case.get("category", "") or "code")
         baseline_ok = _baseline_non_tool_code(prompt)
         tool_ok = _tool_code(prompt)
 
         baseline_rows.append(
             {
                 "case_id": str(case["id"]),
+                "category": category,
                 "prompt": prompt,
                 "oracle_score": 1.0 if baseline_ok else 0.0,
                 "pass": bool(baseline_ok),
@@ -487,6 +578,7 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
         tool_rows.append(
             {
                 "case_id": str(case["id"]),
+                "category": category,
                 "prompt": prompt,
                 "oracle_score": 1.0 if tool_ok else 0.0,
                 "pass": bool(tool_ok),
@@ -522,6 +614,13 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
     passes = [bool(r["pass"]) for r in rows]
     latencies = [float(r["latency_proxy"]) for r in rows]
     tool_flags = [bool(r["tool_verified"]) for r in rows]
+    counts = _run_counts(rows)
+    category_summary = _category_summary(rows)
+    pass_rate = _pass_rate(passes)
+    avg_latency_proxy = _mean(latencies)
+    tool_verification_rate = _pass_rate(tool_flags)
+    avg_oracle_score = _mean(scores)
+    oracle_distribution = _oracle_distribution(scores)
 
     return {
         "config_id": config.config_id,
@@ -538,13 +637,29 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
             "rounds": int(config.rounds),
             "top_k": int(config.top_k),
             "pass_threshold": float(pass_threshold),
+            "dual_gate_config": dict(DUAL_GATE_CONFIG) if config.dual_gate_enabled else {},
         },
-        "num_cases": len(rows),
-        "pass_rate": _pass_rate(passes),
-        "avg_latency_proxy": _mean(latencies),
-        "tool_verification_rate": _pass_rate(tool_flags),
-        "avg_oracle_score": _mean(scores),
-        "oracle_distribution": _oracle_distribution(scores),
+        "counts": dict(counts),
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
+        "pass_rate": float(pass_rate),
+        "avg_latency_proxy": float(avg_latency_proxy),
+        "tool_verification_rate": float(tool_verification_rate),
+        "avg_oracle_score": float(avg_oracle_score),
+        "oracle_distribution": dict(oracle_distribution),
+        "category_summary": category_summary,
+        "summary": {
+            "counts": dict(counts),
+            "metrics": {
+                "pass_threshold": float(pass_threshold),
+                "pass_rate": float(pass_rate),
+                "avg_oracle_score": float(avg_oracle_score),
+                "avg_latency_proxy": float(avg_latency_proxy),
+                "tool_verification_rate": float(tool_verification_rate),
+            },
+            "categories": category_summary,
+        },
         "cases": rows,
     }
 
@@ -580,10 +695,12 @@ def _build_case_diffs(
         target_pass = bool(target.get("pass", False))
         base_tool = bool(base.get("tool_verified", False))
         target_tool = bool(target.get("tool_verified", False))
+        category = str(target.get("category", "") or base.get("category", "") or "uncategorized")
 
         rows.append(
             {
                 "case_id": case_id,
+                "category": category,
                 "oracle_score_baseline": base_score,
                 "oracle_score_target": target_score,
                 "oracle_score_delta": float(target_score - base_score),
@@ -602,7 +719,21 @@ def _build_case_diffs(
     return rows
 
 
+def _run_count(run: Mapping[str, Any], key: str) -> int:
+    counts = run.get("counts")
+    if isinstance(counts, Mapping) and key in counts:
+        return int(max(0.0, _safe_float(counts.get(key), default=0.0)))
+    return int(max(0.0, _safe_float(run.get(key), default=0.0)))
+
+
 def _delta_block(*, baseline_run: Mapping[str, Any], target_run: Mapping[str, Any]) -> dict[str, Any]:
+    baseline_num_cases = _run_count(baseline_run, "num_cases")
+    target_num_cases = _run_count(target_run, "num_cases")
+    baseline_scored = _run_count(baseline_run, "scored_cases")
+    target_scored = _run_count(target_run, "scored_cases")
+    baseline_passed = _run_count(baseline_run, "passed")
+    target_passed = _run_count(target_run, "passed")
+
     baseline_pass = _safe_float(baseline_run.get("pass_rate"), default=0.0)
     target_pass = _safe_float(target_run.get("pass_rate"), default=0.0)
 
@@ -618,6 +749,15 @@ def _delta_block(*, baseline_run: Mapping[str, Any], target_run: Mapping[str, An
     return {
         "baseline_config": str(baseline_run.get("config_id", "")),
         "target_config": str(target_run.get("config_id", "")),
+        "baseline_num_cases": baseline_num_cases,
+        "num_cases": target_num_cases,
+        "num_cases_delta_vs_baseline": int(target_num_cases - baseline_num_cases),
+        "baseline_scored_cases": baseline_scored,
+        "scored_cases": target_scored,
+        "scored_cases_delta_vs_baseline": int(target_scored - baseline_scored),
+        "baseline_passed": baseline_passed,
+        "passed": target_passed,
+        "passed_delta_vs_baseline": int(target_passed - baseline_passed),
         "baseline_pass_rate": baseline_pass,
         "pass_rate": target_pass,
         "pass_rate_delta_vs_baseline": float(target_pass - baseline_pass),
@@ -630,6 +770,86 @@ def _delta_block(*, baseline_run: Mapping[str, Any], target_run: Mapping[str, An
         "baseline_tool_verification_rate": baseline_tool,
         "tool_verification_rate": target_tool,
         "tool_verification_rate_delta_vs_baseline": float(target_tool - baseline_tool),
+    }
+
+
+def _matrix_counts(runs: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    return {
+        "num_runs": int(len(runs)),
+        "num_cases": int(sum(_run_count(run, "num_cases") for run in runs)),
+        "scored_cases": int(sum(_run_count(run, "scored_cases") for run in runs)),
+        "passed": int(sum(_run_count(run, "passed") for run in runs)),
+    }
+
+
+def _category_coverage(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    seen: set[str] = set()
+    for run in runs:
+        summary = run.get("category_summary")
+        if not isinstance(summary, Mapping):
+            continue
+        for category, block in summary.items():
+            if not isinstance(block, Mapping):
+                continue
+            if _safe_float(block.get("num_cases"), default=0.0) > 0.0:
+                seen.add(str(category))
+
+    required = list(CATEGORY_ORDER)
+    covered = sorted(seen)
+    missing = [category for category in required if category not in seen]
+    return {
+        "required": required,
+        "covered": covered,
+        "missing": missing,
+    }
+
+
+def _tool_first_category_block(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    baseline_flags = [bool(row.get("baseline_pass", False)) for row in rows]
+    tool_flags = [bool(row.get("tool_first_pass", False)) for row in rows]
+    num_cases = int(len(rows))
+    passed = int(sum(1 for flag in tool_flags if flag))
+    baseline_pass_rate = _pass_rate(baseline_flags)
+    tool_pass_rate = _pass_rate(tool_flags)
+    return {
+        "num_cases": num_cases,
+        "scored_cases": num_cases,
+        "passed": passed,
+        "baseline_pass_rate": baseline_pass_rate,
+        "tool_first_pass_rate": tool_pass_rate,
+        "pass_rate_delta": float(tool_pass_rate - baseline_pass_rate),
+        "cases": [dict(row) for row in rows],
+    }
+
+
+def _tool_first_compat_payload(*, baseline_run: Mapping[str, Any], tool_run: Mapping[str, Any]) -> dict[str, Any]:
+    baseline_cases = _index_cases(baseline_run)
+    tool_cases = _index_cases(tool_run)
+    case_ids = sorted(set(baseline_cases.keys()) | set(tool_cases.keys()))
+
+    compat_rows: list[dict[str, Any]] = []
+    for case_id in case_ids:
+        baseline_row = baseline_cases.get(case_id, {})
+        tool_row = tool_cases.get(case_id, {})
+        compat_rows.append(
+            {
+                "id": case_id,
+                "category": str(tool_row.get("category", "") or baseline_row.get("category", "") or "uncategorized"),
+                "baseline_pass": bool(baseline_row.get("pass", False)),
+                "tool_first_pass": bool(tool_row.get("pass", False)),
+            }
+        )
+
+    math_rows = [row for row in compat_rows if row.get("category") == "math"]
+    code_rows = [row for row in compat_rows if row.get("category") == "code"]
+    overall_rows = list(compat_rows)
+
+    return {
+        "suite": "pr1_tool_first",
+        "schema_version": "1.1",
+        "math": _tool_first_category_block(math_rows),
+        "code": _tool_first_category_block(code_rows),
+        "overall": _tool_first_category_block(overall_rows),
     }
 
 
@@ -659,14 +879,11 @@ def main() -> int:
     sfc_off = run_index["sfc_off"]
     sfc_on = run_index["sfc_on"]
 
+    baseline_single_summary = _delta_block(baseline_run=baseline_single, target_run=baseline_single)
+    baseline_single_summary["config"] = "baseline_single"
     summary = {
-        "baseline_single": {
-            "config": "baseline_single",
-            "pass_rate": _safe_float(baseline_single.get("pass_rate"), default=0.0),
-            "avg_oracle_score": _safe_float(baseline_single.get("avg_oracle_score"), default=0.0),
-            "avg_latency_proxy": _safe_float(baseline_single.get("avg_latency_proxy"), default=0.0),
-            "tool_verification_rate": _safe_float(baseline_single.get("tool_verification_rate"), default=0.0),
-        },
+        "counts": _matrix_counts(runs),
+        "baseline_single": baseline_single_summary,
         "swarm": _delta_block(baseline_run=baseline_single, target_run=swarm),
         "dual_gated": _delta_block(baseline_run=baseline_single, target_run=dual_gated),
         "tool_first": _delta_block(baseline_run=tool_first_off_run, target_run=tool_first_on_run),
@@ -684,9 +901,11 @@ def main() -> int:
 
     payload = {
         "suite": "pr5_eval_matrix",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "seed": seed,
         "pass_threshold": pass_threshold,
+        "counts": dict(summary["counts"]),
+        "categories": _category_coverage(runs),
         "matrix": {
             "config_ids": [r["config_id"] for r in runs],
             "runs": runs,
@@ -699,7 +918,14 @@ def main() -> int:
     reports.mkdir(parents=True, exist_ok=True)
     out_path = reports / "eval_matrix.json"
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    compat_tool_path = reports / "eval_tool_first.json"
+    compat_payload = _tool_first_compat_payload(
+        baseline_run=tool_first_off_run,
+        tool_run=tool_first_on_run,
+    )
+    compat_tool_path.write_text(json.dumps(compat_payload, indent=2), encoding="utf-8")
     print(f"Wrote {out_path}")
+    print(f"Wrote {compat_tool_path}")
     return 0
 
 

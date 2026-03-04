@@ -39,6 +39,31 @@ def _test_agents() -> list[DummyAgent]:
     ]
 
 
+def _biased_agents_for_code_guardrail() -> list[DummyAgent]:
+    return [
+        DummyAgent(
+            Contract(
+                name="math-agent",
+                domains=["math"],
+                competence=0.99,
+                reliability=0.95,
+                cost_prior=0.20,
+                description="math specialist",
+            )
+        ),
+        DummyAgent(
+            Contract(
+                name="code-agent",
+                domains=["code"],
+                competence=0.20,
+                reliability=0.25,
+                cost_prior=0.20,
+                description="code specialist",
+            )
+        ),
+    ]
+
+
 def test_pr3_intent_classifier_is_deterministic_for_same_prompt() -> None:
     prompt = "My python function throws a traceback TypeError."
     first = analyze_prompt_intent(prompt)
@@ -86,8 +111,93 @@ def test_pr3_router_v3_intent_first_routing_stabilizes_when_model_is_neutral() -
     assert code_agents[0].contract.name == "code-agent"
     assert math_decisions[0].intent == "math"
     assert code_decisions[0].intent == "code"
+    assert math_decisions[0].reason == "router_v3_intent_guardrail"
+    assert code_decisions[0].reason == "router_v3_intent_guardrail"
     assert math_decisions[0].components["expected_success_stabilized"] > math_decisions[0].components["expected_success"]
     assert code_decisions[0].components["expected_success_stabilized"] > code_decisions[0].components["expected_success"]
+    assert math_decisions[0].exploration_probability == 0.0
+    assert code_decisions[0].exploration_probability == 0.0
+
+
+def test_pr3_router_v3_high_confidence_intent_suppresses_exploration_and_overrides_learned_bias() -> None:
+    router = RouterV3(
+        _biased_agents_for_code_guardrail(),
+        seed=17,
+        model_path="/tmp/nonexistent-router-v3-pr3.pt",
+        base_exploration=0.99,
+        min_exploration=0.99,
+        max_exploration=0.99,
+    )
+    router.model = RouterV3Model(
+        feature_names=["competence"],
+        weights={"competence": 12.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=17,
+    )
+
+    ranked_agents, ranked_decisions = router.route_top_k("Fix this python traceback TypeError", k=2)
+    selected_agent, selected_decision = router.route("Fix this python traceback TypeError")
+
+    assert ranked_agents[0].contract.name == "code-agent"
+    assert ranked_decisions[0].agent_name == "code-agent"
+    assert ranked_decisions[0].reason == "router_v3_intent_guardrail"
+    assert ranked_decisions[0].exploration_probability == 0.0
+    assert selected_agent.contract.name == "code-agent"
+    assert selected_decision.selected_by_exploration is False
+
+
+def test_pr3_router_v3_low_confidence_intent_uses_learned_path_and_retains_exploration() -> None:
+    router = RouterV3(
+        _test_agents(),
+        seed=21,
+        model_path="/tmp/nonexistent-router-v3-pr3.pt",
+        base_exploration=0.33,
+        min_exploration=0.33,
+        max_exploration=0.33,
+    )
+    router.model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=21,
+    )
+
+    _agents, decisions = router.route_top_k("calculate 2+2", k=2)
+
+    assert decisions[0].intent == "math"
+    assert decisions[0].reason == "router_v3_learned"
+    assert decisions[0].exploration_probability == 0.33
+    assert decisions[0].components["intent_low_confidence"] == 1.0
+
+
+def test_pr3_router_v3_high_confidence_non_guardrail_intent_disables_exploration() -> None:
+    router = RouterV3(
+        _test_agents(),
+        seed=31,
+        model_path="/tmp/nonexistent-router-v3-pr3.pt",
+        base_exploration=0.44,
+        min_exploration=0.44,
+        max_exploration=0.44,
+    )
+    router.model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=31,
+    )
+
+    _agents, decisions = router.route_top_k("Please help", k=2)
+
+    assert decisions[0].intent == "general"
+    assert decisions[0].reason == "router_v3_learned"
+    assert decisions[0].components["intent_low_confidence"] == 0.0
+    assert decisions[0].exploration_probability == 0.0
 
 
 def test_pr3_run_swarm_trace_emits_intent_metadata_schema(tmp_path, monkeypatch) -> None:

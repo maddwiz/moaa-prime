@@ -61,7 +61,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/demo_run.py`: deterministic demo run (default mode `v3`)
 - `scripts/bench_run.py`: benchmark run (default mode `v3`)
 - `scripts/eval_run.py`: eval report run (default mode `v3`)
-- `scripts/eval_tool_first.py`: deterministic PR-1 baseline vs tool-first correctness suite (`reports/tool_first_eval.json`)
+- `scripts/eval_tool_first.py`: deterministic PR-1 baseline vs tool-first correctness suite (`reports/tool_first_eval.json` + `reports/eval_tool_first.json`)
 - `scripts/eval_compare.py`: v1-v2 compare report (`reports/eval_compare.json`)
 - `scripts/eval_dual_gate.py`: deterministic PR-4 baseline vs dual-gated comparison (`reports/dual_gated_eval.json`)
 - `scripts/eval_matrix.py`: deterministic PR-5 comparative ablation matrix (`reports/eval_matrix.json`)
@@ -79,6 +79,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/tool_first_eval.json`
+- `reports/eval_tool_first.json`
 - `reports/dual_gated_eval.json`
 - `reports/eval_matrix.json`
 - `reports/eval_compare.json`
@@ -108,6 +109,7 @@ Roadmap PR-2 tests:
 
 Roadmap PR-3 tests:
 - `tests/test_pr3_router_intent_trace.py`
+- `tests/test_pr3_router_eval_non_regression.py`
 
 Roadmap PR-4 tests:
 - `tests/test_pr4_gated_dual.py`
@@ -115,6 +117,12 @@ Roadmap PR-4 tests:
 
 Roadmap PR-5 tests:
 - `tests/test_pr5_eval_matrix_script.py`
+- `tests/test_pr5_eval_report_schema.py`
+- `tests/test_pr5_eval_tool_first_schema.py`
+- `tests/test_pr5_eval_compare_schema.py`
+
+Swarm verification propagation tests:
+- `tests/test_v3_swarm_tool_verification.py`
 
 Roadmap PR-6 tests:
 - `tests/test_pr6_memory_regression.py`

@@ -58,6 +58,8 @@ BUDGET_PROFILES: dict[str, dict[str, float]] = {
 
 
 CALIBRATION_BUDGET_MODES: tuple[str, str, str] = ("cheap", "balanced", "max_quality")
+INTENT_GUARDRAIL_INTENTS: tuple[str, str] = ("math", "code")
+DEFAULT_INTENT_CONFIDENCE_THRESHOLD: float = 0.80
 
 
 def _canonical_budget_mode(budget_mode: str | None) -> str | None:
@@ -321,6 +323,7 @@ class RouterV3:
         base_exploration: float = 0.04,
         min_exploration: float = 0.01,
         max_exploration: float = 0.22,
+        intent_confidence_threshold: float = DEFAULT_INTENT_CONFIDENCE_THRESHOLD,
     ) -> None:
         self.agents: List[BaseAgent] = list(agents)
         self.seed = int(seed)
@@ -332,6 +335,7 @@ class RouterV3:
         self.base_exploration = float(base_exploration)
         self.min_exploration = float(min_exploration)
         self.max_exploration = float(max_exploration)
+        self.intent_confidence_threshold = _clamp(float(intent_confidence_threshold), 0.0, 1.0)
 
     def reload_model(self) -> None:
         self.model = load_router_v3_model(self.model_path, seed=self.seed)
@@ -399,6 +403,21 @@ class RouterV3:
         eps = self.base_exploration + (0.25 * (1.0 - margin))
         return _clamp(eps, self.min_exploration, self.max_exploration)
 
+    def _intent_guardrail_active(self, intent: str, intent_confidence: float) -> bool:
+        intent_name = str(intent or "").strip().lower()
+        if intent_name not in INTENT_GUARDRAIL_INTENTS:
+            return False
+        return _clamp(float(intent_confidence), 0.0, 1.0) >= self.intent_confidence_threshold
+
+    def _intent_guardrail_utility(self, *, intent_alignment: float, competence: float, reliability: float) -> float:
+        return _clamp(
+            (0.82 * _clamp(float(intent_alignment), 0.0, 1.0))
+            + (0.10 * _clamp(float(competence), 0.0, 1.0))
+            + (0.08 * _clamp(float(reliability), 0.0, 1.0)),
+            0.0,
+            1.0,
+        )
+
     def route_top_k(
         self,
         prompt: str,
@@ -418,8 +437,11 @@ class RouterV3:
         chosen_budget_mode = _canonical_budget_mode(budget_mode or self._budget_mode(budget)) or "balanced"
         intent = analyze_prompt_intent(prompt, task_metadata=task_metadata)
         intent_confidence = intent_confidence_score(intent.scores, intent.intent)
+        low_confidence_intent = intent_confidence < self.intent_confidence_threshold
+        intent_guardrail_active = self._intent_guardrail_active(intent.intent, intent_confidence)
+        decision_reason = "router_v3_intent_guardrail" if intent_guardrail_active else "router_v3_learned"
 
-        scored: List[Tuple[float, str, BaseAgent, Dict[str, float], float]] = []
+        scored: List[Tuple[float, str, BaseAgent, Dict[str, float], float, float, float]] = []
         for agent in self.agents:
             contract = agent.contract
             agent_name = str(contract.name)
@@ -448,27 +470,63 @@ class RouterV3:
                 1.0,
             )
             expected_success_stabilized = _clamp((0.80 * expected_success) + (0.20 * intent_prior), 0.0, 1.0)
-            utility = _utility_from_expected_success(expected_success_stabilized, features, chosen_budget_mode)
+            learned_utility = _utility_from_expected_success(expected_success_stabilized, features, chosen_budget_mode)
+            guardrail_utility = self._intent_guardrail_utility(
+                intent_alignment=intent_alignment,
+                competence=features["competence"],
+                reliability=features["reliability"],
+            )
+            utility = guardrail_utility if intent_guardrail_active else learned_utility
             features["intent_alignment"] = float(intent_alignment)
             features["intent_confidence"] = float(intent_confidence)
             features["intent_prior"] = float(intent_prior)
             features["expected_success_stabilized"] = float(expected_success_stabilized)
+            features["learned_utility"] = float(learned_utility)
+            features["guardrail_utility"] = float(guardrail_utility)
+            features["intent_guardrail_active"] = 1.0 if intent_guardrail_active else 0.0
+            features["intent_guardrail_threshold"] = float(self.intent_confidence_threshold)
+            features["intent_low_confidence"] = 1.0 if low_confidence_intent else 0.0
 
-            scored.append((float(utility), agent_name, agent, features, expected_success))
+            scored.append(
+                (
+                    float(utility),
+                    agent_name,
+                    agent,
+                    features,
+                    expected_success,
+                    float(learned_utility),
+                    float(guardrail_utility),
+                )
+            )
 
         scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
 
         decisions: List[RouteDecisionV3] = []
-        for utility, agent_name, _agent, features, expected_success in scored:
+        for utility, agent_name, _agent, features, expected_success, learned_utility, guardrail_utility in scored:
             profile = BUDGET_PROFILES[chosen_budget_mode]
-            rationale = (
-                f"expected_success={expected_success:.3f}; "
-                f"expected_success_stabilized={features['expected_success_stabilized']:.3f}; "
-                f"intent={intent.intent}:{intent_confidence:.2f}; "
-                f"sim={features['similarity']:.2f}; "
-                f"budget={chosen_budget_mode}; "
-                f"w=({profile['quality_weight']:.2f},{profile['cost_weight']:.2f},{profile['latency_weight']:.2f})"
-            )
+            if intent_guardrail_active:
+                rationale = (
+                    f"intent_guardrail=on(intent={intent.intent}, conf={intent_confidence:.2f}, "
+                    f"threshold={self.intent_confidence_threshold:.2f}); "
+                    f"guardrail_utility={guardrail_utility:.3f}; "
+                    f"learned_utility={learned_utility:.3f}; "
+                    f"expected_success={expected_success:.3f}; "
+                    f"expected_success_stabilized={features['expected_success_stabilized']:.3f}; "
+                    f"sim={features['similarity']:.2f}; "
+                    f"budget={chosen_budget_mode}; "
+                    f"w=({profile['quality_weight']:.2f},{profile['cost_weight']:.2f},{profile['latency_weight']:.2f})"
+                )
+            else:
+                rationale = (
+                    f"intent_guardrail=off(intent={intent.intent}, conf={intent_confidence:.2f}, "
+                    f"threshold={self.intent_confidence_threshold:.2f}); "
+                    f"expected_success={expected_success:.3f}; "
+                    f"expected_success_stabilized={features['expected_success_stabilized']:.3f}; "
+                    f"learned_utility={learned_utility:.3f}; "
+                    f"sim={features['similarity']:.2f}; "
+                    f"budget={chosen_budget_mode}; "
+                    f"w=({profile['quality_weight']:.2f},{profile['cost_weight']:.2f},{profile['latency_weight']:.2f})"
+                )
             components = {k: float(v) for k, v in features.items()}
             components["expected_success"] = float(expected_success)
 
@@ -476,7 +534,7 @@ class RouterV3:
                 RouteDecisionV3(
                     agent_name=agent_name,
                     score=float(utility),
-                    reason="router_v3_learned",
+                    reason=decision_reason,
                     rationale=rationale,
                     exploration_probability=0.0,
                     expected_utility=float(utility),
@@ -488,7 +546,7 @@ class RouterV3:
                 )
             )
 
-        eps = self._exploration_probability(decisions)
+        eps = self._exploration_probability(decisions) if low_confidence_intent else 0.0
         ranked_agents = [row[2] for row in scored[:k]]
         ranked_decisions = [replace(d, exploration_probability=float(eps)) for d in decisions[:k]]
         return ranked_agents, ranked_decisions

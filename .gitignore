@@ -40,3 +40,6 @@ reports/
 
 # Generated Codex swarm run artifacts
 .codex/runs/
+
+# Local one-off Codex prompt drops
+.codex/prompts/final-handoff-complete.md

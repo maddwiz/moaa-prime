@@ -94,6 +94,7 @@ Deliver:
   - sfc on/off
 - output `reports/eval_matrix.json` with stable schema:
   - summary deltas vs baseline
+  - run-level counts (`num_cases`, `scored_cases`, `passed`)
   - pass rate
   - latency
   - tool verification rate
@@ -193,6 +194,15 @@ MoAA is done when all are true:
    - tool-first beats baseline,
    - swarm beats baseline where expected,
    - dual-gated does not regress overall.
+   - dual-gate trigger rate is bounded (`reports/dual_gated_eval.json -> summary.dual_gated.trigger_rate < 1.0`).
+   - router non-regression holds (`reports/eval_router.json` deltas for routing accuracy and oracle gain are `>= 0`).
+   - report schemas remain stable/non-null across:
+     - `eval_report.json`
+     - `eval_tool_first.json`
+     - `eval_compare.json`
+     - `dual_gated_eval.json`
+     - `eval_matrix.json`
+     - `eval_router.json`
 4. PR-0..PR-8 deliverables and mandatory upgrades are implemented and covered by deterministic tests.
 5. `README.md`, `ROADMAP.md`, `CONTRACTS.md`, and `DEMO_README.md` are complete and current.
 6. `reports/final_report.json` is generated and demo-ready.

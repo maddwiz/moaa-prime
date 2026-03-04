@@ -13,13 +13,35 @@ if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
 from moaa_prime.core.app import MoAAPrime
 
 
+PASS_THRESHOLD = 0.70
+DUAL_GATE_CONFIG: dict[str, float] = {
+    "low_confidence_threshold": 0.60,
+    "high_ambiguity_threshold": 0.85,
+}
+
 CASE_PROMPTS = [
-    {"id": "math_linear", "prompt": "Solve 2x + 3 = 7"},
-    {"id": "code_add", "prompt": "Write Python: function add(a,b) returns a+b"},
-    {"id": "safety_reasoning", "prompt": "Explain why 1/0 is undefined with a safe Python snippet"},
-    {"id": "traceback_fix", "prompt": "Fix this traceback TypeError in my function"},
-    {"id": "algebra_quadratic", "prompt": "Solve x^2 - 7*x + 10 = 0 for x"},
-    {"id": "general_policy", "prompt": "Give a concise plan for debugging a failing script"},
+    {"id": "math_linear", "category": "math", "prompt": "Solve 2x + 3 = 7"},
+    {"id": "code_add", "category": "code", "prompt": "Write Python: function add(a,b) returns a+b"},
+    {
+        "id": "reasoning_syllogism",
+        "category": "reasoning",
+        "prompt": "If all bloops are razzies and all razzies are lazzies, are all bloops lazzies? Explain briefly.",
+    },
+    {
+        "id": "safety_div_zero",
+        "category": "safety",
+        "prompt": "Explain why 1/0 is undefined with a safe Python snippet.",
+    },
+    {
+        "id": "routing_intent_code",
+        "category": "routing_intent",
+        "prompt": "Classify this task intent as math or code and answer with one word: Write Python function multiply(a,b).",
+    },
+    {
+        "id": "memory_behavior_recall",
+        "category": "memory_behavior",
+        "prompt": "Memory check: key=delta7, value=42. Repeat exactly: delta7 42",
+    },
 ]
 
 
@@ -55,9 +77,39 @@ def _pass_rate(values: list[bool]) -> float:
     return float(sum(1 for value in values if value) / len(values))
 
 
+def _run_counts(*, scores: list[float], passes: list[bool]) -> dict[str, int]:
+    num_cases = int(len(scores))
+    scored_cases = int(len(scores))
+    passed = int(sum(1 for value in passes if value))
+    return {
+        "num_cases": num_cases,
+        "scored_cases": scored_cases,
+        "passed": passed,
+    }
+
+
+def _run_summary(*, config_id: str, scores: list[float], passes: list[bool]) -> dict[str, object]:
+    counts = _run_counts(scores=scores, passes=passes)
+    pass_rate = _pass_rate(passes)
+    mean_oracle_score = float(sum(scores) / max(1, len(scores)))
+    return {
+        "config_id": config_id,
+        "counts": counts,
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
+        "pass_rate": pass_rate,
+        "mean_oracle_score": mean_oracle_score,
+        "metrics": {
+            "pass_rate": pass_rate,
+            "mean_oracle_score": mean_oracle_score,
+        },
+    }
+
+
 def main() -> int:
     seed = int(os.getenv("MOAA_PR4_EVAL_SEED") or "29")
-    pass_threshold = 0.70
+    pass_threshold = float(os.getenv("MOAA_PR4_PASS_THRESHOLD") or str(PASS_THRESHOLD))
 
     rows = []
     baseline_scores: list[float] = []
@@ -67,6 +119,7 @@ def main() -> int:
     gate_triggered: list[bool] = []
 
     for idx, case in enumerate(CASE_PROMPTS):
+        category = str(case.get("category", "") or "uncategorized")
         baseline_app = MoAAPrime(mode="v3", seed=seed)
         gated_app = MoAAPrime(mode="v3", seed=seed)
 
@@ -85,7 +138,7 @@ def main() -> int:
             rounds=1,
             top_k=2,
             dual_gate=True,
-            dual_gate_config={"high_ambiguity_threshold": 0.0},
+            dual_gate_config=DUAL_GATE_CONFIG,
         )
 
         baseline_score = _oracle_score(baseline)
@@ -105,6 +158,7 @@ def main() -> int:
         rows.append(
             {
                 "case_id": str(case["id"]),
+                "category": category,
                 "prompt": str(case["prompt"]),
                 "baseline": {
                     "oracle_score": baseline_score,
@@ -129,23 +183,44 @@ def main() -> int:
     baseline_oracle = float(sum(baseline_scores) / max(1, len(baseline_scores)))
     gated_oracle = float(sum(gated_scores) / max(1, len(gated_scores)))
     trigger_rate = _pass_rate(gate_triggered)
+    trigger_count = int(sum(1 for value in gate_triggered if value))
+
+    baseline_summary = _run_summary(config_id="baseline", scores=baseline_scores, passes=baseline_passes)
+    dual_summary = _run_summary(config_id="dual_gated", scores=gated_scores, passes=gated_passes)
+    dual_summary["trigger_rate"] = float(trigger_rate)
+    dual_summary["triggered"] = int(trigger_count)
+    dual_summary["pass_rate_delta_vs_baseline"] = float(gated_pass_rate - baseline_pass_rate)
+    dual_summary["oracle_delta_vs_baseline"] = float(gated_oracle - baseline_oracle)
+
+    baseline_metrics = baseline_summary.get("metrics")
+    if isinstance(baseline_metrics, dict):
+        baseline_metrics["pass_threshold"] = float(pass_threshold)
+    dual_metrics = dual_summary.get("metrics")
+    if isinstance(dual_metrics, dict):
+        dual_metrics["pass_rate_delta_vs_baseline"] = float(gated_pass_rate - baseline_pass_rate)
+        dual_metrics["oracle_delta_vs_baseline"] = float(gated_oracle - baseline_oracle)
+        dual_metrics["trigger_rate"] = float(trigger_rate)
+        dual_metrics["triggered"] = int(trigger_count)
+
+    counts = {
+        "num_cases": int(len(CASE_PROMPTS)),
+        "scored_cases": int(len(CASE_PROMPTS)),
+        "passed": int(dual_summary["passed"]),
+    }
 
     payload = {
         "suite": "pr4_dual_gate",
+        "schema_version": "1.1",
         "seed": seed,
-        "num_cases": len(CASE_PROMPTS),
+        "pass_threshold": float(pass_threshold),
+        "dual_gate_config": dict(DUAL_GATE_CONFIG),
+        "counts": counts,
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
         "summary": {
-            "baseline": {
-                "pass_rate": baseline_pass_rate,
-                "mean_oracle_score": baseline_oracle,
-            },
-            "dual_gated": {
-                "pass_rate": gated_pass_rate,
-                "mean_oracle_score": gated_oracle,
-                "pass_rate_delta_vs_baseline": float(gated_pass_rate - baseline_pass_rate),
-                "oracle_delta_vs_baseline": float(gated_oracle - baseline_oracle),
-                "trigger_rate": trigger_rate,
-            },
+            "baseline": baseline_summary,
+            "dual_gated": dual_summary,
         },
         "cases": rows,
     }

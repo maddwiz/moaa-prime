@@ -8,6 +8,7 @@ import pytest
 
 from moaa_prime.core.app import MoAAPrime
 from moaa_prime.eval.runner import EvalCase, EvalRunner
+from moaa_prime.oracle.verifier import OracleV2, OracleVerifier
 from moaa_prime.schema import ANSWER_OBJECT_KEYS, normalize_answer_object, upgrade_answer_object
 
 
@@ -97,9 +98,83 @@ def test_normalize_answer_object_run_swarm_shape() -> None:
     assert answer_object["final"] == payload["best"]["text"]
     assert answer_object["confidence"] == pytest.approx(0.68)
     assert "exec" in answer_object["tools"]
+    assert "python-verify" in answer_object["tools"]
+    assert "tool-verified" in answer_object["tools"]
     assert "compile-pass" in answer_object["notes"]
-    assert answer_object["trace"] == payload["trace"]
+    assert "verification:pass(compile)" in answer_object["notes"]
+    for key, value in payload["trace"].items():
+        assert answer_object["trace"][key] == value
+    assert answer_object["trace"]["verification"]["status"] == "pass"
+    assert answer_object["trace"]["verification"]["stage"] == "compile"
     assert answer_object["trace"] is not payload["trace"]
+
+
+def test_normalize_answer_object_uses_probe_verification_when_primary_is_missing() -> None:
+    payload = {
+        "mode": "v3",
+        "best": {
+            "agent": "code-agent",
+            "text": "fallback",
+            "meta": {
+                "tool_first": {
+                    "source": "llm_fallback",
+                    "prompt_probe": {
+                        "verification": {"stage": "compile", "status": "fail", "passed": False, "error_type": "SyntaxError"}
+                    },
+                    "proposal_probe": {
+                        "verification": {"stage": "exec", "status": "pass", "passed": True, "exec_ran": True}
+                    },
+                }
+            },
+            "oracle": {"score": 0.55, "reason": "probe-based", "meta": {}},
+        },
+        "trace": {"router": {}, "swarm": {}, "oracle": {}, "final": {}},
+    }
+
+    answer_object = normalize_answer_object(payload)
+    verification = answer_object["trace"]["verification"]
+    assert "python-verify" in answer_object["tools"]
+    assert "tool-verified" in answer_object["tools"]
+    assert verification["status"] == "pass"
+    assert verification["stage"] == "exec"
+    assert str(verification["source"]).endswith("proposal_probe.verification")
+
+
+@pytest.mark.parametrize(
+    "oracle_factory",
+    [
+        pytest.param(lambda: OracleVerifier(), id="oracle-v1"),
+        pytest.param(lambda: OracleV2(seed=31), id="oracle-v2"),
+    ],
+)
+def test_oracle_applies_dominant_calibration_for_verified_tool_success(
+    oracle_factory,
+) -> None:
+    oracle = oracle_factory()
+    prompt = "General request."
+    answer = "short answer"
+
+    baseline = oracle.score(prompt, answer)
+    legacy_meta = {
+        "tool_first": {
+            "verification": {"status": "pass", "passed": True, "stage": "compile", "exec_ran": False}
+        }
+    }
+    dominant_meta = {
+        "tool_first": {
+            "attempted": True,
+            "success": True,
+            "verification": {"status": "pass", "passed": True, "stage": "compile", "exec_ran": False},
+        }
+    }
+
+    legacy = oracle.score(prompt, answer, answer_metadata=legacy_meta)
+    dominant = oracle.score(prompt, answer, answer_metadata=dominant_meta)
+
+    assert legacy - baseline == pytest.approx(0.05)
+    assert dominant >= 0.95
+    assert dominant > legacy
+    assert dominant == oracle.score(prompt, answer, answer_metadata=dominant_meta)
 
 
 def test_upgrade_answer_object_is_additive() -> None:
@@ -130,6 +205,8 @@ def test_app_outputs_include_answer_object(tmp_path: Path, monkeypatch: pytest.M
     assert {"mode", "decision", "result", "oracle"}.issubset(run_once_out.keys())
     _assert_answer_object_shape(run_once_out["answer_object"])
     assert run_once_out["answer_object"]["final"] == run_once_out["result"]["text"]
+    assert run_once_out["answer_object"]["trace"]["verification"]["status"] == "pass"
+    assert "tool-verified" in run_once_out["answer_object"]["tools"]
 
     run_swarm_out = app.run_swarm(
         "Solve 2x + 3 = 7",
@@ -141,6 +218,9 @@ def test_app_outputs_include_answer_object(tmp_path: Path, monkeypatch: pytest.M
     assert {"best", "candidates", "confidence", "trace", "mode"}.issubset(run_swarm_out.keys())
     _assert_answer_object_shape(run_swarm_out["answer_object"])
     assert run_swarm_out["answer_object"]["final"] == run_swarm_out["best"]["text"]
+    assert run_swarm_out["answer_object"]["trace"]["verification"]["status"] == "pass"
+    for trace_key in run_swarm_out["trace"].keys():
+        assert trace_key in run_swarm_out["answer_object"]["trace"]
 
 
 def test_eval_runner_upgrades_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,3 +236,5 @@ def test_eval_runner_upgrades_outputs(tmp_path: Path, monkeypatch: pytest.Monkey
     for row in results:
         assert "answer_object" in row.output
         _assert_answer_object_shape(row.output["answer_object"])
+        assert row.output["answer_object"]["trace"]["verification"]["status"] == "pass"
+        assert "tool-verified" in row.output["answer_object"]["tools"]

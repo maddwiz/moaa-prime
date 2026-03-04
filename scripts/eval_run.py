@@ -37,10 +37,11 @@ def _load_cases() -> list[EvalCase]:
 def main() -> int:
     mode = (os.getenv("MOAA_EVAL_MODE") or "v3").strip().lower()
     seed = int(os.getenv("MOAA_EVAL_SEED") or "11")
+    pass_threshold = float(os.getenv("MOAA_EVAL_PASS_THRESHOLD") or "0.75")
 
     runner = EvalRunner(model_mode=mode, seed=seed)
     results = runner.run(_load_cases())
-    write_json_report(results, "reports/eval_report.json")
+    write_json_report(results, "reports/eval_report.json", pass_threshold=pass_threshold)
     print("Wrote reports/eval_report.json")
     return 0
 

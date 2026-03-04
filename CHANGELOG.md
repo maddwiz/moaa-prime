@@ -2,6 +2,76 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003T — Final Hardening (Router/Dual/Schema)
+- Hardened RouterV3 behavior:
+  - intent-first deterministic guardrail is now primary for high-confidence `math`/`code` intents.
+  - learned RouterV3 remains active as tie-breaker/primary path only when intent confidence is below threshold.
+  - exploration is suppressed for high-confidence guardrailed decisions.
+  - files:
+    - `src/moaa_prime/router/router_v3.py`
+    - `scripts/eval_router.py`
+    - `tests/test_pr3_router_intent_trace.py`
+    - `tests/test_pr3_router_eval_non_regression.py`
+- Hardened swarm/dual selection and tool verification propagation:
+  - deterministic selection order in v3 selection now enforces:
+    1. tool-verified winner
+    2. higher oracle score
+    3. stable shorter/cleaner fallback
+  - tool verification metadata now propagates through candidates, trace oracle rows, final trace, and top-level swarm output (`tool_verification_rate`).
+  - tightened `TypeError` fallbacks to only signature-mismatch paths (re-raise internal `TypeError`).
+  - files:
+    - `src/moaa_prime/swarm/manager.py`
+    - `tests/test_v3_swarm_tool_verification.py`
+- Hardened Tool-Verified Oracle + structured answer object:
+  - oracle calibration now detects deterministic verified tool outcomes and applies dominant-pass calibration floors while preserving legacy behavior when only raw verification is available.
+  - answer object now normalizes and emits verification signal data in `answer_object.trace.verification`.
+  - files:
+    - `src/moaa_prime/oracle/verifier.py`
+    - `src/moaa_prime/schema/answer_object.py`
+    - `tests/test_upgrade_answer_object.py`
+    - `tests/test_upgrade_failure_taxonomy.py`
+- Standardized eval/report schemas (`schema_version: "1.1"`) with stable top-level `summary` and non-null numeric `counts`:
+  - `reports/eval_report.json`
+  - `reports/eval_tool_first.json` (compat alias from `scripts/eval_tool_first.py`)
+  - `reports/eval_compare.json`
+  - `reports/dual_gated_eval.json`
+  - `reports/eval_matrix.json`
+  - `reports/eval_router.json`
+  - files:
+    - `scripts/eval_run.py`
+    - `src/moaa_prime/eval/report.py`
+    - `scripts/eval_tool_first.py`
+    - `scripts/eval_compare.py`
+    - `scripts/eval_dual_gate.py`
+    - `scripts/eval_matrix.py`
+    - `scripts/eval_router.py`
+    - `tests/test_pr5_eval_report_schema.py`
+    - `tests/test_pr5_eval_tool_first_schema.py`
+    - `tests/test_pr5_eval_compare_schema.py`
+    - `tests/test_pr4_dual_gate_eval_script.py`
+    - `tests/test_pr5_eval_matrix_script.py`
+- Hardened done gate criteria:
+  - added RouterV3 non-regression checks (`routing_accuracy.delta >= 0`, `oracle_score_gain.delta >= 0`).
+  - added dual-gate non-saturation check (`summary.dual_gated.trigger_rate < 1.0`).
+  - added eval-matrix run schema checks for non-null run-level fields.
+  - added targeted code/math tool-verification non-regression command check.
+  - files:
+    - `.codex/done_criteria.json`
+
+Cycle log:
+- Changed files: router/swarm/oracle/schema/eval scripts + tests + docs + done criteria (see section above).
+- Metrics delta (before -> after):
+  - `reports/eval_router.json routing_accuracy.delta`: `-0.3333 -> +0.6667`
+  - `reports/eval_router.json oracle_score_gain.delta`: `-0.0221 -> +0.0533`
+  - `reports/dual_gated_eval.json summary.dual_gated.trigger_rate`: `1.0000 -> 0.8333`
+  - `reports/eval_matrix.json summary.swarm.tool_verification_rate_delta_vs_baseline`: `-0.6667 -> +0.3333`
+  - `reports/eval_matrix.json summary.dual_gated.tool_verification_rate_delta_vs_baseline`: `-0.6667 -> +0.3333`
+- Blockers:
+  - no functional blockers; pre-commit done-check run fails only on `git_clean_worktree` by design.
+- Next cycle plan:
+  - reduce swarm/dual latency deltas while preserving new router/tool-verification gains.
+  - expand router eval case count further for stronger confidence intervals.
+
 ## Cycle 003S — PR-8 docs/demo polish + strict upgrade closure
 - Implemented mandatory failure taxonomy upgrade module:
   - `src/moaa_prime/eval/failure_taxonomy.py`

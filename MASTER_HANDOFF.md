@@ -33,7 +33,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
   - tool-first policy module: `src/moaa_prime/policy/tool_first.py`
   - agent integration: `src/moaa_prime/agents/math_agent.py`, `src/moaa_prime/agents/code_agent.py`
   - deterministic policy tests: `tests/test_pr1_tool_first_policy.py`
-  - deterministic eval artifact script: `scripts/eval_tool_first.py` -> `reports/tool_first_eval.json`
+  - deterministic eval artifact script: `scripts/eval_tool_first.py` -> `reports/tool_first_eval.json` and compatibility alias `reports/eval_tool_first.json`
 - PR-1 behavior:
   - `MathAgent` runs SymPy-first equation/expression solving, then falls back safely.
   - `CodeAgent` runs deterministic verify/repair on prompt code when present.
@@ -54,6 +54,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
   - router integration: `src/moaa_prime/router/router_v2.py`, `src/moaa_prime/router/router_v3.py`
   - trace metadata integration: `src/moaa_prime/swarm/manager.py`, `src/moaa_prime/core/app.py`
   - deterministic PR-3 tests: `tests/test_pr3_router_intent_trace.py`
+  - router eval non-regression test: `tests/test_pr3_router_eval_non_regression.py`
 - PR-3 behavior:
   - router intent classifier deterministically labels prompts as `math`, `code`, or `general`.
   - routing decisions include additive intent metadata (`intent`, `matched_features`, `intent_scores`).
@@ -105,8 +106,10 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `sfc` on/off
   - report schema includes:
     - mode-level pass rate, latency proxy, tool verification rate, and oracle distribution
+    - run-level counts (`num_cases`, `scored_cases`, `passed`)
     - `summary` delta blocks with baseline comparisons
     - per-case diffs for all major ablations
+    - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
   - done-gate summary paths now produced directly in `reports/eval_matrix.json`:
     - `summary.tool_first.pass_rate_delta_vs_baseline`
     - `summary.swarm.pass_rate_delta_vs_baseline`
@@ -288,12 +291,18 @@ Done gate:
 - behavior: each successful cycle evaluates done criteria; if met, status becomes `done` and daemon exits.
 - roadmap source-of-truth: `ROADMAP.md` (PR-0 through PR-8)
 - current done gate requires full handoff scope: PR-0..PR-8, full runbook commands, compatibility/memory tests, and mandatory upgrade artifacts (Tool-Verified Oracle, failure taxonomy, structured answer object, budgeted swarm checks, guardrailed router behavior, dashboard).
+- hardened final gate additionally enforces:
+  - RouterV3 non-regression vs V2 (`reports/eval_router.json`: routing + oracle deltas `>= 0`)
+  - dual-gate not always-on (`reports/dual_gated_eval.json`: `summary.dual_gated.trigger_rate < 1.0`)
+  - eval-matrix run schema non-null checks (`num_cases`, `scored_cases`, `passed`, `pass_rate`, `avg_oracle_score`, `avg_latency_proxy`)
+  - targeted code/math tool-verification non-regression checks
 
 Primary artifacts:
 - `reports/demo_run.json`
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/tool_first_eval.json`
+- `reports/eval_tool_first.json`
 - `reports/dual_gated_eval.json`
 - `reports/eval_matrix.json`
 - `reports/eval_compare.json`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import statistics
 from typing import Any, Dict, List, Mapping, Optional, Union
 
@@ -23,6 +24,52 @@ except Exception:  # pragma: no cover
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
+
+
+def _coerce_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on", "pass", "passed"}
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
+def _clean_text(text: str) -> str:
+    return " ".join(str(text or "").strip().split())
+
+
+def _cleanliness_penalty(text: str) -> int:
+    raw = str(text or "")
+    if not raw.strip():
+        return 10
+    compact = _clean_text(raw)
+    lower = raw.lower()
+    extra_ws = max(0, len(raw.strip()) - len(compact))
+    code_fences = raw.count("```")
+    blank_runs = raw.count("\n\n")
+    noisy_tokens = len(re.findall(r"\b(?:todo|fixme|placeholder)\b", lower))
+    ellipsis = 1 if raw.strip().endswith("...") else 0
+    return (6 * code_fences) + (2 * blank_runs) + (3 * noisy_tokens) + min(extra_ws, 12) + ellipsis
+
+
+_EPS = 1.0e-12
+
+
+def _is_signature_mismatch_typeerror(exc: TypeError) -> bool:
+    msg = str(exc or "")
+    return (
+        ("unexpected keyword argument" in msg)
+        or ("positional arguments but" in msg and "were given" in msg)
+        or ("required positional argument" in msg)
+    )
 
 
 class SwarmManager:
@@ -197,7 +244,9 @@ class SwarmManager:
                     budget_mode=budget_mode,
                 )
                 return list(agents), list(decisions)
-            except TypeError:
+            except TypeError as exc:
+                if not _is_signature_mismatch_typeerror(exc):
+                    raise
                 try:
                     agents, decisions = self.router.route_top_k(  # type: ignore[misc]
                         prompt,
@@ -208,7 +257,9 @@ class SwarmManager:
                         history_stats=history_stats,
                     )
                     return list(agents), list(decisions)
-                except TypeError:
+                except TypeError as nested_exc:
+                    if not _is_signature_mismatch_typeerror(nested_exc):
+                        raise
                     agents, decisions = self.router.route_top_k(prompt, k=top_k)
                     return list(agents), list(decisions)
 
@@ -255,7 +306,9 @@ class SwarmManager:
 
         try:
             result = agent.handle(call_prompt, task_id=task_id)
-        except TypeError:
+        except TypeError as exc:
+            if not _is_signature_mismatch_typeerror(exc):
+                raise
             result = agent.handle(call_prompt)
 
         text = getattr(result, "text", str(result))
@@ -273,6 +326,10 @@ class SwarmManager:
 
         grounding = float((((oracle_block.get("meta", {}) or {}).get("components", {}) or {}).get("grounding", oracle_block["score"])))
         confidence_proxy = _clamp((0.65 * float(oracle_block["score"])) + (0.35 * grounding), 0.0, 1.0)
+        tool_verification = self._extract_tool_verification(
+            candidate_meta=meta if isinstance(meta, Mapping) else None,
+            oracle_meta=_coerce_mapping(oracle_block.get("meta")),
+        )
 
         return {
             "agent": str(agent_name),
@@ -284,6 +341,179 @@ class SwarmManager:
             "latency_proxy": latency_proxy,
             "cost_proxy": cost_proxy,
             "confidence_proxy": confidence_proxy,
+            "tool_verified": bool(tool_verification.get("passed", False)),
+            "tool_verification": dict(tool_verification),
+        }
+
+    def _extract_tool_verification(
+        self,
+        *,
+        candidate_meta: Optional[Mapping[str, Any]],
+        oracle_meta: Optional[Mapping[str, Any]],
+    ) -> Dict[str, Any]:
+        signal = _coerce_mapping(_coerce_mapping(oracle_meta).get("verification_signal"))
+        if signal:
+            status = str(signal.get("status", "") or "").strip().lower()
+            passed_raw = signal.get("passed")
+            if isinstance(passed_raw, bool):
+                passed = passed_raw
+            else:
+                passed = status == "pass"
+            if status not in {"pass", "fail"}:
+                status = "pass" if passed else "fail"
+            attempted = True
+            return {
+                "status": status,
+                "attempted": attempted,
+                "passed": bool(passed),
+                "stage": str(signal.get("stage", "") or ""),
+                "exec_ran": bool(signal.get("exec_ran", False)),
+                "source": "oracle.verification_signal",
+            }
+
+        tool_meta = _coerce_mapping(_coerce_mapping(candidate_meta).get("tool_first"))
+        verification = _coerce_mapping(tool_meta.get("verification"))
+        if verification:
+            status = str(verification.get("status", "") or "").strip().lower()
+            passed_raw = verification.get("passed")
+            if isinstance(passed_raw, bool):
+                passed = passed_raw
+            elif status:
+                passed = status == "pass"
+            else:
+                passed = False
+            if status not in {"pass", "fail"}:
+                status = "pass" if passed else "fail"
+            return {
+                "status": status,
+                "attempted": True,
+                "passed": bool(passed),
+                "stage": str(verification.get("stage", "") or ""),
+                "exec_ran": bool(verification.get("exec_ran", False)),
+                "source": "meta.tool_first.verification",
+            }
+
+        attempted = _coerce_bool(tool_meta.get("attempted", False))
+        success_raw = tool_meta.get("success")
+        success_known = success_raw is not None
+        passed = bool(success_raw is True)
+        attempted = bool(attempted or success_known or passed)
+        status = "unknown"
+        if success_known:
+            status = "pass" if passed else "fail"
+
+        return {
+            "status": status,
+            "attempted": attempted,
+            "passed": bool(passed),
+            "stage": "",
+            "exec_ran": False,
+            "source": "meta.tool_first",
+        }
+
+    def _candidate_tool_verification(self, candidate: Mapping[str, Any]) -> Dict[str, Any]:
+        block = _coerce_mapping(candidate.get("tool_verification"))
+        if block:
+            status = str(block.get("status", "") or "").strip().lower()
+            passed = bool(block.get("passed", False))
+            attempted = bool(block.get("attempted", False) or passed)
+            if status not in {"pass", "fail", "unknown"}:
+                status = "pass" if passed else "unknown"
+            return {
+                "status": status,
+                "attempted": attempted,
+                "passed": passed,
+                "stage": str(block.get("stage", "") or ""),
+                "exec_ran": bool(block.get("exec_ran", False)),
+                "source": str(block.get("source", "") or "candidate.tool_verification"),
+            }
+
+        oracle_meta = _coerce_mapping(_coerce_mapping(candidate.get("oracle")).get("meta"))
+        candidate_meta = _coerce_mapping(candidate.get("meta"))
+        return self._extract_tool_verification(candidate_meta=candidate_meta, oracle_meta=oracle_meta)
+
+    def _is_tool_verified(self, candidate: Mapping[str, Any]) -> bool:
+        raw = candidate.get("tool_verified", None)
+        if raw is not None:
+            return bool(_coerce_bool(raw))
+        return bool(self._candidate_tool_verification(candidate).get("passed", False))
+
+    def _oracle_score(self, candidate: Mapping[str, Any]) -> float:
+        return float(_coerce_mapping(candidate.get("oracle")).get("score", 0.0))
+
+    def _fallback_key(self, candidate: Mapping[str, Any], *, index: int) -> tuple[int, int, str, int]:
+        text = str(candidate.get("text", ""))
+        clean = _clean_text(text)
+        label = str(candidate.get("agent", ""))
+        return (
+            _cleanliness_penalty(text),
+            len(clean),
+            label,
+            int(index),
+        )
+
+    def _select_by_tool_verified_oracle_fallback(
+        self,
+        candidates: List[Dict[str, Any]],
+    ) -> tuple[Dict[str, Any], str]:
+        if not candidates:
+            raise ValueError("candidates must not be empty")
+
+        ordered = list(candidates)
+        verified = [c for c in ordered if self._is_tool_verified(c)]
+        pool = verified if verified else ordered
+        pool_reason = "tool-verified" if verified else "oracle-score"
+
+        best_score = max(self._oracle_score(c) for c in pool)
+        top = [c for c in pool if abs(self._oracle_score(c) - best_score) <= _EPS]
+        if len(top) == 1:
+            return top[0], pool_reason
+
+        index_by_object = {id(candidate): idx for idx, candidate in enumerate(ordered)}
+        winner = min(
+            top,
+            key=lambda c: self._fallback_key(c, index=index_by_object.get(id(c), 0)),
+        )
+        return winner, "fallback-shorter-cleaner"
+
+    def _aggregate_tool_verification(self, candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        total = int(len(candidates))
+        if total <= 0:
+            return {
+                "total_candidates": 0,
+                "attempted_candidates": 0,
+                "verified_candidates": 0,
+                "failed_candidates": 0,
+                "verification_rate": 0.0,
+                "attempt_rate": 0.0,
+                "pass_rate_given_attempted": 0.0,
+            }
+
+        attempted = 0
+        verified = 0
+        failed = 0
+
+        for candidate in candidates:
+            verification = self._candidate_tool_verification(candidate)
+            passed = bool(verification.get("passed", False))
+            attempted_flag = bool(verification.get("attempted", False) or passed)
+            status = str(verification.get("status", "") or "").strip().lower()
+
+            if attempted_flag:
+                attempted += 1
+            if passed:
+                verified += 1
+            if attempted_flag and (status == "fail" or (not passed and status != "unknown")):
+                failed += 1
+
+        return {
+            "total_candidates": total,
+            "attempted_candidates": int(attempted),
+            "verified_candidates": int(verified),
+            "failed_candidates": int(failed),
+            "verification_rate": float(verified / float(total)),
+            "attempt_rate": float(attempted / float(total)),
+            "pass_rate_given_attempted": float((verified / float(attempted)) if attempted > 0 else 0.0),
         }
 
     def _apply_cross_critique(self, candidates: List[Dict[str, Any]], *, enabled: bool) -> Dict[str, Any]:
@@ -325,6 +555,15 @@ class SwarmManager:
                     "latency_proxy": 0.0,
                     "cost_proxy": 0.0,
                     "confidence_proxy": 0.0,
+                    "tool_verified": False,
+                    "tool_verification": {
+                        "status": "unknown",
+                        "attempted": False,
+                        "passed": False,
+                        "stage": "",
+                        "exec_ran": False,
+                        "source": "none",
+                    },
                 },
                 0.0,
                 {"enabled": cross_check, "status": "no-candidates"},
@@ -376,6 +615,15 @@ class SwarmManager:
                     "latency_proxy": 0.0,
                     "cost_proxy": 0.0,
                     "confidence_proxy": 0.0,
+                    "tool_verified": False,
+                    "tool_verification": {
+                        "status": "unknown",
+                        "attempted": False,
+                        "passed": False,
+                        "stage": "",
+                        "exec_ran": False,
+                        "source": "none",
+                    },
                 },
                 0.0,
                 {"enabled": True, "status": "no-candidates", "frontier": []},
@@ -425,15 +673,15 @@ class SwarmManager:
                 1.0,
             )
 
-        best = max(
-            frontier_candidates,
-            key=lambda c: (
-                _utility(c),
-                float((c.get("oracle", {}) or {}).get("score", 0.0)),
-                -float(c.get("latency_proxy", 0.0)),
-                -float(c.get("cost_proxy", 0.0)),
-            ),
-        )
+        global_verified = [c for c in candidates if self._is_tool_verified(c)]
+        if global_verified:
+            selection_pool = list(global_verified)
+            selector_scope = "global-tool-verified"
+        else:
+            selection_pool = list(frontier_candidates)
+            selector_scope = "pareto-frontier"
+
+        best, selector_rule = self._select_by_tool_verified_oracle_fallback(selection_pool)
         confidence = _clamp(float(best.get("confidence_proxy", 0.5)), 0.0, 1.0)
 
         frontier_meta = [
@@ -443,6 +691,8 @@ class SwarmManager:
                 "confidence": float(c.get("confidence_proxy", 0.0)),
                 "latency": float(c.get("latency_proxy", 0.0)),
                 "cost": float(c.get("cost_proxy", 0.0)),
+                "tool_verified": bool(self._is_tool_verified(c)),
+                "utility": float(_utility(c)),
             }
             for c in frontier_candidates
         ]
@@ -452,6 +702,11 @@ class SwarmManager:
             "status": "pareto-selected",
             "budget_mode": budget_mode,
             "profile": profile,
+            "selector": {
+                "rule": selector_rule,
+                "scope": selector_scope,
+                "pool_size": int(len(selection_pool)),
+            },
             "frontier": frontier_meta,
         }
 
@@ -519,6 +774,7 @@ class SwarmManager:
 
         cross_meta = {"enabled": False, "status": "disabled"}
         pareto_meta = {"enabled": False, "status": "not-used", "frontier": []}
+        tool_verification_meta = self._aggregate_tool_verification(candidates)
 
         if chosen_mode == "v3":
             cross_meta = self._apply_cross_critique(candidates, enabled=bool(cross_check))
@@ -546,6 +802,8 @@ class SwarmManager:
                 "cross_check": cross_meta,
                 "pareto": pareto_meta,
                 "budget_mode": budget_mode,
+                "tool_verification": tool_verification_meta,
+                "tool_verification_rate": float(tool_verification_meta.get("verification_rate", 0.0)),
             },
             "oracle": {
                 "mode": "oracle_v2" if chosen_mode in {"v2", "v3"} else "oracle_v1",
@@ -555,6 +813,9 @@ class SwarmManager:
                         "score": float((c.get("oracle", {}) or {}).get("score", 0.0)),
                         "reason": (c.get("oracle", {}) or {}).get("reason", ""),
                         "components": ((c.get("oracle", {}) or {}).get("meta", {}) or {}).get("components", {}),
+                        "tool_verified": bool(self._is_tool_verified(c)),
+                        "tool_verification": self._candidate_tool_verification(c),
+                        "verification_signal": ((c.get("oracle", {}) or {}).get("meta", {}) or {}).get("verification_signal", {}),
                     }
                     for c in candidates
                 ],
@@ -564,6 +825,7 @@ class SwarmManager:
                 "score": float((best.get("oracle", {}) or {}).get("score", 0.0)),
                 "confidence": float(confidence),
                 "budget_mode": budget_mode,
+                "tool_verified": bool(self._is_tool_verified(best)),
             },
         }
 
@@ -574,6 +836,7 @@ class SwarmManager:
                 "confidence": float(confidence),
                 "trace": trace,
                 "mode": chosen_mode,
+                "tool_verification_rate": float(tool_verification_meta.get("verification_rate", 0.0)),
                 **aggregates,
             }
 
@@ -583,6 +846,7 @@ class SwarmManager:
             "confidence": float(confidence),
             "trace": trace,
             "mode": chosen_mode,
+            "tool_verification_rate": float(tool_verification_meta.get("verification_rate", 0.0)),
             **aggregates,
         }
 
