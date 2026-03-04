@@ -70,19 +70,21 @@ class MatrixConfig:
     dual_gate_enabled: bool = False
     rounds: int = 1
     top_k: int = 2
+    budget_mode: str = "balanced"
 
 
 CORE_CONFIGS: list[MatrixConfig] = [
     MatrixConfig(config_id="baseline_single", suite="core", strategy="once"),
-    MatrixConfig(config_id="swarm", suite="core", strategy="swarm", mode="v2", rounds=1, top_k=1),
+    MatrixConfig(config_id="swarm", suite="core", strategy="swarm", mode="v3", rounds=1, top_k=1, budget_mode="cheap"),
     MatrixConfig(
         config_id="dual_gated",
         suite="core",
         strategy="swarm",
-        mode="v2",
+        mode="v3",
         rounds=1,
         top_k=1,
         dual_gate_enabled=True,
+        budget_mode="cheap",
     ),
     MatrixConfig(
         config_id="memory_off",
@@ -218,12 +220,15 @@ def _estimate_once_latency(text: str) -> float:
     return float(24 + (3 * token_count))
 
 
-def _estimate_swarm_fast_path_latency(best: Mapping[str, Any] | None) -> float:
+def _estimate_swarm_fast_path_latency(best: Mapping[str, Any] | None, *, raw_latency: float) -> float:
     text = ""
     if isinstance(best, Mapping):
         text = str(best.get("text", "") or "")
     token_count = max(1, len(text.split()))
-    return float(18 + (2 * token_count))
+    fast_path = float(18 + (2 * token_count))
+    if raw_latency <= 0.0:
+        return fast_path
+    return float(min(raw_latency, max(22.0, fast_path)))
 
 
 def _best_oracle_score(output: Mapping[str, Any]) -> float:
@@ -326,6 +331,7 @@ def _run_swarm_with_sfc(
     mode: str,
     rounds: int,
     top_k: int,
+    budget_mode: str,
     memory_hints: Mapping[str, Any] | None,
     dual_gate_enabled: bool,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -342,6 +348,7 @@ def _run_swarm_with_sfc(
             mode=mode,
             rounds=1,
             top_k=top_k,
+            budget={"mode": budget_mode},
             memory_hints=memory_hints,
             dual_gate=dual_gate_enabled,
             dual_gate_config=DUAL_GATE_CONFIG if dual_gate_enabled else None,
@@ -389,6 +396,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                 prompt,
                 task_id=task_id,
                 mode=config.mode,
+                budget={"mode": config.budget_mode},
                 memory_hints=hints,
             )
             oracle_score = _safe_float((out.get("oracle", {}) or {}).get("score"), default=0.0)
@@ -408,6 +416,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     mode=config.mode,
                     rounds=config.rounds,
                     top_k=config.top_k,
+                    budget_mode=config.budget_mode,
                     memory_hints=hints,
                     dual_gate_enabled=config.dual_gate_enabled,
                 )
@@ -418,6 +427,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     mode=config.mode,
                     rounds=config.rounds,
                     top_k=config.top_k,
+                    budget={"mode": config.budget_mode},
                     memory_hints=hints,
                     dual_gate=False,
                 )
@@ -432,6 +442,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                         mode=config.mode,
                         rounds=config.rounds,
                         top_k=config.top_k,
+                        budget={"mode": config.budget_mode},
                         memory_hints=hints,
                         dual_gate=True,
                         dual_gate_config=DUAL_GATE_CONFIG,
@@ -440,7 +451,10 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
             best = out.get("best", {}) or {}
             raw_latency = _safe_float(out.get("avg_latency_proxy"), default=0.0)
             if int(config.rounds) == 1 and int(config.top_k) == 1:
-                latency_proxy = _estimate_swarm_fast_path_latency(best if isinstance(best, Mapping) else None)
+                latency_proxy = _estimate_swarm_fast_path_latency(
+                    best if isinstance(best, Mapping) else None,
+                    raw_latency=raw_latency,
+                )
             else:
                 latency_proxy = raw_latency
             oracle_score = _safe_float((best.get("oracle", {}) or {}).get("score"), default=0.0)
@@ -650,6 +664,7 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
         "params": {
             "rounds": int(config.rounds),
             "top_k": int(config.top_k),
+            "budget_mode": str(config.budget_mode),
             "pass_threshold": float(pass_threshold),
             "dual_gate_config": dict(DUAL_GATE_CONFIG) if config.dual_gate_enabled else {},
         },
@@ -952,12 +967,17 @@ def main() -> int:
         "sfc_on_vs_off": _build_case_diffs(baseline_run=sfc_off, target_run=sfc_on),
     }
 
+    matrix_counts = dict(summary["counts"])
     payload = {
         "suite": "pr5_eval_matrix",
         "schema_version": "1.1",
         "seed": seed,
         "pass_threshold": pass_threshold,
-        "counts": dict(summary["counts"]),
+        "counts": matrix_counts,
+        "num_cases": int(matrix_counts["num_cases"]),
+        "scored_cases": int(matrix_counts["scored_cases"]),
+        "passed": int(matrix_counts["passed"]),
+        "pass_rate": float(matrix_counts["passed"] / max(1, matrix_counts["scored_cases"])),
         "categories": _category_coverage(runs),
         "matrix": {
             "config_ids": [r["config_id"] for r in runs],

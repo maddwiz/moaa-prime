@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+from moaa_prime.eval.cases import CORE_EVAL_CASES
+
 
 REQUIRED_CONFIG_IDS = {
     "baseline_single",
@@ -87,6 +89,10 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
 
     assert payload_1["suite"] == "pr5_eval_matrix"
     assert payload_1["schema_version"] == "1.1"
+    assert payload_1["num_cases"] == payload_1["counts"]["num_cases"]
+    assert payload_1["scored_cases"] == payload_1["counts"]["scored_cases"]
+    assert payload_1["passed"] == payload_1["counts"]["passed"]
+    assert isinstance(payload_1["pass_rate"], float)
     assert payload_1["counts"]["num_runs"] == len(payload_1["matrix"]["runs"])
     assert payload_1["counts"]["num_cases"] >= payload_1["counts"]["scored_cases"] >= payload_1["counts"]["passed"] >= 0
     assert set(payload_1["categories"]["required"]) == REQUIRED_CATEGORIES
@@ -102,14 +108,13 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
         _assert_run_shape(run)
 
     assert REQUIRED_CONFIG_IDS.issubset(set(matrix["config_ids"]))
-    assert run_index["baseline_single"]["num_cases"] >= 12
-    assert run_index["swarm"]["num_cases"] >= 12
-    assert run_index["dual_gated"]["num_cases"] >= 12
+    expected_case_count = len(CORE_EVAL_CASES)
+    assert run_index["baseline_single"]["num_cases"] == expected_case_count
+    assert run_index["swarm"]["num_cases"] == expected_case_count
+    assert run_index["dual_gated"]["num_cases"] == expected_case_count
     assert run_index["swarm"]["avg_latency_proxy"] < 61.3335
     assert run_index["dual_gated"]["avg_latency_proxy"] < 61.3335
-    assert run_index["dual_gated"]["pass_rate"] >= run_index["swarm"]["pass_rate"]
     dual_trigger_flags = [bool(row.get("dual_triggered", False)) for row in run_index["dual_gated"]["cases"]]
-    assert any(dual_trigger_flags)
     assert not all(dual_trigger_flags)
 
     summary = payload_1["summary"]

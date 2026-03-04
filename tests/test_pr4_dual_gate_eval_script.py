@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+from moaa_prime.eval.cases import CORE_EVAL_CASES
+
 
 REQUIRED_CATEGORIES = {
     "math",
@@ -44,7 +46,7 @@ def test_pr4_eval_dual_gate_script_emits_deterministic_non_regression(tmp_path, 
     assert payload_1["num_cases"] == payload_1["counts"]["num_cases"]
     assert payload_1["scored_cases"] == payload_1["counts"]["scored_cases"]
     assert payload_1["passed"] == payload_1["counts"]["passed"]
-    assert payload_1["num_cases"] >= 12
+    assert payload_1["num_cases"] == len(CORE_EVAL_CASES)
     categories = {str(row.get("category", "")) for row in payload_1["cases"]}
     assert REQUIRED_CATEGORIES.issubset(categories)
 

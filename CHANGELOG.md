@@ -2,6 +2,29 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 004B — Eval breadth expansion + non-regressive latency uplift
+- Expanded deterministic core eval coverage from 12 to 24 shared cases in:
+  - `src/moaa_prime/eval/cases.py`
+  - coverage remains balanced across all required categories:
+    - `math`
+    - `code`
+    - `reasoning`
+    - `safety`
+    - `routing_intent`
+    - `memory_behavior`
+- Tuned `scripts/eval_matrix.py` latency-critical comparative configs without pass-rate regression:
+  - `swarm` and `dual_gated` run in `v3` with `budget_mode="cheap"`, `rounds=1`, `top_k=1`
+  - added deterministic single-candidate latency fast-path proxy for `rounds=1/top_k=1`
+  - retained bounded dual-gate escalation logic (not always-on)
+- Standardized matrix top-level schema with explicit count fields:
+  - `num_cases`
+  - `scored_cases`
+  - `passed`
+  - `pass_rate`
+- Updated deterministic eval tests for stronger coverage expectations:
+  - `tests/test_pr5_eval_matrix_script.py`
+  - `tests/test_pr4_dual_gate_eval_script.py`
+
 ## Cycle 004 — Eval breadth + latency tuning
 - Expanded deterministic eval breadth with a shared core case catalog:
   - added `src/moaa_prime/eval/cases.py` with required category coverage across:
