@@ -76,7 +76,7 @@ Expected outputs:
 
 `reports/` is generated output and should stay untracked.
 
-## Codex Swarm (Optional)
+## Codex Swarm
 
 ```bash
 ./scripts/run_swarm_cycle.sh
@@ -84,3 +84,49 @@ Expected outputs:
 ```
 
 Artifacts are written to `.codex/runs/` as `*.log` and `*.final.txt`.
+
+## Codex Swarm (Nonstop Autopilot)
+
+Start a continuous swarm loop (background daemon):
+
+```bash
+./scripts/swarm_autopilot.sh start
+```
+
+Use a specific prompt file:
+
+```bash
+./scripts/swarm_autopilot.sh start .codex/prompts/autopilot.md .codex/prompts/cycle-003-direct.md
+```
+
+Check status and recent cycle summaries:
+
+```bash
+./scripts/swarm_autopilot.sh status
+```
+
+Tail daemon logs:
+
+```bash
+./scripts/swarm_autopilot.sh tail
+```
+
+Stop the daemon:
+
+```bash
+./scripts/swarm_autopilot.sh stop
+```
+
+Autopilot state is stored in `.codex/runs/autopilot/`:
+- `daemon.log`
+- `status.env`
+- `cycles.tsv`
+- `active_prompt.md`
+
+Useful environment controls:
+- `SWARM_AUTOPILOT_SLEEP_SECONDS=10` (delay between cycles)
+- `SWARM_AUTOPILOT_VALIDATE_MODE=auto|quick|full|none`
+- `SWARM_AUTOPILOT_FULL_VALIDATE_EVERY=5`
+- `SWARM_AUTOPILOT_MAX_FAILURE_STREAK=3` (fallback prompt trigger)
+- `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
+- `SWARM_AUTOPILOT_AUTOPUSH=0|1`

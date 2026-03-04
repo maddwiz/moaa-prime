@@ -2,6 +2,15 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003A — Nonstop Codex swarm automation
+- Added nonstop swarm daemon script: `scripts/swarm_autopilot.sh`.
+  - `start|stop|status|tail|once|run` controls.
+  - Continuous loop with cycle state, heartbeat, summary TSV, and daemon logs.
+  - Automatic fallback prompt switching after configurable failure streak.
+  - Validation gating modes (`auto|quick|full|none`) and optional auto-commit/auto-push.
+- Added default continuous mission prompt: `.codex/prompts/autopilot.md`.
+- Updated runbook docs (`README.md`, `MASTER_HANDOFF.md`, `FILEMAP.md`) for nonstop swarm operation.
+
 ## Cycle 003 — Learning system (RouterV3 + traces + Pareto + training)
 - Added `ARCHITECTURE_CYCLE3.md` with full Cycle 3 data flow and interfaces.
 - Added RouterV3 (`src/moaa_prime/router/router_v3.py`) with:

@@ -60,6 +60,33 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/eval_router.py
 ```
 
+## Nonstop Codex Swarm Runbook
+
+Start continuous swarm daemon:
+
+```bash
+./scripts/swarm_autopilot.sh start
+```
+
+Inspect current state:
+
+```bash
+./scripts/swarm_autopilot.sh status
+./scripts/swarm_autopilot.sh tail
+```
+
+Stop daemon:
+
+```bash
+./scripts/swarm_autopilot.sh stop
+```
+
+Autopilot artifacts:
+- `.codex/runs/autopilot/daemon.log`
+- `.codex/runs/autopilot/status.env`
+- `.codex/runs/autopilot/cycles.tsv`
+- `.codex/runs/autopilot/active_prompt.md`
+
 Primary artifacts:
 - `reports/demo_run.json`
 - `reports/bench.json`
@@ -115,6 +142,14 @@ Optional seeds:
 - `MOAA_BENCH_SEED`
 - `MOAA_EVAL_SEED`
 - `MOAA_EVAL_COMPARE_SEED`
+
+Swarm autopilot controls:
+- `SWARM_AUTOPILOT_SLEEP_SECONDS`
+- `SWARM_AUTOPILOT_FULL_VALIDATE_EVERY`
+- `SWARM_AUTOPILOT_MAX_FAILURE_STREAK`
+- `SWARM_AUTOPILOT_VALIDATE_MODE=auto|quick|full|none`
+- `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
+- `SWARM_AUTOPILOT_AUTOPUSH=0|1`
 
 Ollama example:
 
