@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1, PR-2, PR-3)
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -60,6 +60,31 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `ranking_rationale`
   - `run_once(...)` now emits additive `route_trace` for debug surfaces without changing required contract keys.
 
+- PR-4 is implemented:
+  - gated dual selector module: `src/moaa_prime/duality/gated_dual.py`
+  - duality package exports: `src/moaa_prime/duality/__init__.py`
+  - app integration (opt-in and additive): `src/moaa_prime/core/app.py`
+  - deterministic PR-4 tests:
+    - `tests/test_pr4_gated_dual.py`
+    - `tests/test_pr4_dual_gate_eval_script.py`
+  - deterministic PR-4 eval artifact script:
+    - `scripts/eval_dual_gate.py` -> `reports/dual_gated_eval.json`
+- PR-4 behavior:
+  - `run_swarm(...)` accepts additive kwargs:
+    - `dual_gate: bool | None` (default off)
+    - `dual_gate_config: Mapping[str, Any] | None`
+  - trigger conditions are deterministic:
+    - low confidence
+    - high ambiguity
+    - tool-fail
+  - deterministic best-of selector rule order:
+    1. tool-verified winner
+    2. higher oracle score
+    3. shorter/cleaner fallback tie-break
+  - additive trace/debug surface:
+    - `trace.swarm.dual_gate` with trigger reasons and selector outcome
+    - dual candidate metadata under `candidate.meta.dual_brain` and `candidate.meta.dual_gate`
+
 ## Cycle 3 Truth (Learning Loop)
 
 Execution modes:
@@ -109,6 +134,7 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/eval_run.py
 .venv/bin/python scripts/eval_tool_first.py
 .venv/bin/python scripts/eval_compare.py
+.venv/bin/python scripts/eval_dual_gate.py
 .venv/bin/python scripts/train_router.py
 .venv/bin/python scripts/eval_router.py
 ```
@@ -165,6 +191,7 @@ Primary artifacts:
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/tool_first_eval.json`
+- `reports/dual_gated_eval.json`
 - `reports/eval_matrix.json`
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`
@@ -220,6 +247,7 @@ Mode controls:
 - `MOAA_DEMO_MODE=v1|v2|v3` (default script mode now `v3`)
 - `MOAA_BENCH_MODE=v1|v2|v3` (default script mode now `v3`)
 - `MOAA_EVAL_MODE=v1|v2|v3` (default script mode now `v3`)
+- `MOAA_DUAL_GATE=0|1` (optional default for dual-gated swarm selection)
 
 Router v3 / learning controls:
 - `MOAA_BUDGET_MODE=cheap|balanced|max_quality`

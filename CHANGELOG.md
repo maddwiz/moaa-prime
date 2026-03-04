@@ -2,6 +2,37 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003M — PR-4 gated dual-brain + deterministic best-of selector
+- Added PR-4 duality package:
+  - `src/moaa_prime/duality/gated_dual.py`
+  - `src/moaa_prime/duality/__init__.py`
+- Implemented deterministic gated dual trigger logic:
+  - trigger reasons: `low-confidence`, `high-ambiguity`, `tool-fail`
+  - deterministic reason ordering and thresholded gate decision object
+- Implemented deterministic best-of selector for single vs dual candidates:
+  1. tool-verified winner
+  2. higher oracle score
+  3. stable shorter/cleaner fallback tie-break
+- Integrated gated dual path into `MoAAPrime.run_swarm(...)` as additive, opt-in behavior:
+  - new optional args:
+    - `dual_gate: bool | None = None`
+    - `dual_gate_config: Mapping[str, Any] | None = None`
+  - preserved required contract keys and default behavior (`dual_gate` remains off unless enabled)
+  - additive trace metadata emitted under `trace.swarm.dual_gate`
+  - additive dual candidate metadata emitted under `candidate.meta.dual_brain` and `candidate.meta.dual_gate`
+- Added deterministic PR-4 tests:
+  - `tests/test_pr4_gated_dual.py`
+  - `tests/test_pr4_dual_gate_eval_script.py`
+  - coverage includes trigger logic, selector ordering, run_swarm integration, and baseline non-regression assertions
+- Added deterministic PR-4 eval artifact script:
+  - `scripts/eval_dual_gate.py` -> `reports/dual_gated_eval.json`
+  - latest deterministic run summary:
+    - `pass_rate_delta_vs_baseline = +0.16666666666666663`
+    - `oracle_delta_vs_baseline = +0.028866666666666707`
+- Updated continuity docs:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003L — PR-3 router intent-first stabilizer + route trace metadata
 - Added deterministic intent-first policy module:
   - `src/moaa_prime/router/intent.py`

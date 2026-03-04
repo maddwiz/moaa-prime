@@ -44,6 +44,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `src/moaa_prime/oracle/rubric_v2.yaml`: default OracleV2 rubric config
 - `src/moaa_prime/swarm/manager.py`: v1/v2/v3 swarm, cross-critique hooks, Pareto selection
 - `src/moaa_prime/swarm/pareto.py`: Pareto frontier helper
+- `src/moaa_prime/duality/gated_dual.py`: PR-4 gated dual trigger + deterministic best-of selector
 - `src/moaa_prime/evolution/gcel.py`: GCEL v1 + GCELV2 gated evolution
 - `src/moaa_prime/trace/recorder.py`: trace files + router dataset appends
 - `src/moaa_prime/eval/runner.py`: mode-aware eval runner with proxy metrics
@@ -57,6 +58,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/eval_run.py`: eval report run (default mode `v3`)
 - `scripts/eval_tool_first.py`: deterministic PR-1 baseline vs tool-first correctness suite (`reports/tool_first_eval.json`)
 - `scripts/eval_compare.py`: v1-v2 compare report (`reports/eval_compare.json`)
+- `scripts/eval_dual_gate.py`: deterministic PR-4 baseline vs dual-gated comparison (`reports/dual_gated_eval.json`)
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
 - `scripts/render_report.py`: rolls up demo/bench/eval outputs into `reports/final_report.json`
@@ -70,6 +72,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `reports/bench.json`
 - `reports/eval_report.json`
 - `reports/tool_first_eval.json`
+- `reports/dual_gated_eval.json`
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`
@@ -94,6 +97,10 @@ Roadmap PR-2 tests:
 
 Roadmap PR-3 tests:
 - `tests/test_pr3_router_intent_trace.py`
+
+Roadmap PR-4 tests:
+- `tests/test_pr4_gated_dual.py`
+- `tests/test_pr4_dual_gate_eval_script.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`

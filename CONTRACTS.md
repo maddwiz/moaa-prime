@@ -139,6 +139,13 @@ Each `trace.router.ranked[*]` required keys:
 - `pareto: dict`
 - `budget_mode: str`
 
+Additive swarm-trace metadata (PR-4 dual gate, optional):
+- `dual_gate: dict` with additive debug fields such as:
+  - `enabled: bool`
+  - `triggered: bool`
+  - `reasons: list[str]`
+  - `selector: dict` (for example `winner_source`, `rule`)
+
 `trace.oracle` required keys:
 - `mode: str`
 - `scores: list[dict]` where each item has required `agent: str`, `score: float`, `reason: str`, `components: dict`

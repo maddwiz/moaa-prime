@@ -8,10 +8,12 @@ from typing import Any, Dict, Mapping, Optional
 
 from moaa_prime.agents import CodeAgent, MathAgent
 from moaa_prime.contracts import Contract
+from moaa_prime.duality import GatedDualBrainSelector
 from moaa_prime.router import MetaRouter, RouterV2, RouterV3, contract_embedding
 from moaa_prime.router.intent import analyze_prompt_intent, intent_confidence_score
 
 from moaa_prime.oracle.verifier import OracleV2, OracleVerifier
+from moaa_prime.swarm.dual_brain_runner import DualBrainRunner
 from moaa_prime.swarm.manager import SwarmManager
 
 from moaa_prime.memory import ReasoningBank
@@ -84,6 +86,9 @@ class MoAAPrime:
 
         self.gcel_v1 = GCEL(mutation_step=0.04, elite_frac=0.50, seed=self.seed)
         self.gcel_v2 = GCELV2(seed=self.seed)
+
+        self.dual_brain_runner = DualBrainRunner()
+        self.gated_dual_selector = GatedDualBrainSelector()
 
         # Backward-compatible aliases
         self.router = self.router_v1
@@ -171,6 +176,213 @@ class MoAAPrime:
         if mode in {"cheap", "balanced", "max_quality"}:
             return mode
         return "balanced"
+
+    def _boolish(self, value: Any, *, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return default
+
+    def _safe_float(self, value: Any, *, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _selector_from_config(
+        self,
+        dual_gate_config: Optional[Mapping[str, Any]],
+    ) -> GatedDualBrainSelector:
+        if not isinstance(dual_gate_config, Mapping):
+            return self.gated_dual_selector
+
+        low_default = float(self.gated_dual_selector.low_confidence_threshold)
+        high_default = float(self.gated_dual_selector.high_ambiguity_threshold)
+        low = self._safe_float(dual_gate_config.get("low_confidence_threshold"), default=low_default)
+        high = self._safe_float(dual_gate_config.get("high_ambiguity_threshold"), default=high_default)
+        return GatedDualBrainSelector(
+            low_confidence_threshold=low,
+            high_ambiguity_threshold=high,
+        )
+
+    def _is_dual_gate_enabled(self, dual_gate: bool | None) -> bool:
+        if dual_gate is not None:
+            return bool(dual_gate)
+        return self._boolish(os.getenv("MOAA_DUAL_GATE"), default=False)
+
+    def _ranked_router_scores(self, out: Mapping[str, Any]) -> list[float]:
+        ranked = (((out.get("trace", {}) or {}).get("router", {}) or {}).get("ranked", []) or [])
+        scores: list[float] = []
+        for row in ranked:
+            if isinstance(row, Mapping):
+                scores.append(self._safe_float(row.get("score"), default=0.0))
+        return scores
+
+    def _build_dual_candidate(
+        self,
+        *,
+        prompt: str,
+        run_mode: str,
+        single_candidate: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        dual_result = self.dual_brain_runner.run(prompt)
+        architect = dict((dual_result.get("architect") or {}))
+        oracle = dict((dual_result.get("oracle") or {}))
+
+        plan = str(architect.get("plan", "") or "")
+        approved = bool(oracle.get("approved", False))
+        reason = str(oracle.get("reason", "dual-brain verdict") or "dual-brain verdict")
+        score = self._safe_float(oracle.get("score"), default=0.0)
+        score = max(0.0, min(1.0, score))
+
+        text = plan if approved else f"{plan}\nOracle veto: {reason}"
+        token_count = max(1, len(text.split()))
+        base_round = int(self._safe_float(single_candidate.get("round"), default=1.0))
+        base_rank = int(self._safe_float(single_candidate.get("rank"), default=0.0))
+
+        latency_proxy = float(46 + (4 * token_count) + (6 if run_mode == "v3" else 10))
+        cost_proxy = float(18 + token_count + (8 if approved else 4))
+
+        return {
+            "agent": "dual-brain",
+            "text": text,
+            "meta": {
+                "dual_brain": {
+                    "architect": architect,
+                    "oracle": oracle,
+                },
+                "dual_gate": {
+                    "source": "dual_brain_runner",
+                    "approved": approved,
+                },
+            },
+            "oracle": {
+                "score": score,
+                "reason": reason,
+                "meta": {
+                    "source": "dual_brain_runner",
+                    "approved": approved,
+                    "oracle_meta": oracle.get("meta", {}) or {},
+                },
+            },
+            "round": max(1, base_round),
+            "rank": max(0, base_rank + 1),
+            "latency_proxy": latency_proxy,
+            "cost_proxy": cost_proxy,
+            "confidence_proxy": score,
+        }
+
+    def _apply_dual_gate(
+        self,
+        *,
+        out: Dict[str, Any],
+        prompt: str,
+        run_mode: str,
+        dual_gate: bool | None,
+        dual_gate_config: Optional[Mapping[str, Any]],
+    ) -> None:
+        trace = out.get("trace")
+        if not isinstance(trace, dict):
+            trace = {}
+            out["trace"] = trace
+
+        swarm_trace = trace.get("swarm")
+        if not isinstance(swarm_trace, dict):
+            swarm_trace = {}
+            trace["swarm"] = swarm_trace
+
+        enabled = self._is_dual_gate_enabled(dual_gate)
+        selector = self._selector_from_config(dual_gate_config)
+        dual_trace: Dict[str, Any] = {
+            "enabled": bool(enabled),
+            "triggered": False,
+            "reasons": [],
+            "confidence": self._safe_float(out.get("confidence"), default=0.0),
+            "ambiguity": 0.0,
+            "tool_failed": False,
+            "thresholds": {
+                "low_confidence": float(selector.low_confidence_threshold),
+                "high_ambiguity": float(selector.high_ambiguity_threshold),
+            },
+            "selector": {
+                "winner_source": "single",
+                "rule": "disabled",
+            },
+            "candidate_labels": ["single"],
+        }
+
+        best = out.get("best")
+        if not isinstance(best, Mapping):
+            swarm_trace["dual_gate"] = dual_trace
+            return
+
+        best_candidate = dict(best)
+        if not enabled:
+            swarm_trace["dual_gate"] = dual_trace
+            return
+
+        dual_candidate = self._build_dual_candidate(
+            prompt=prompt,
+            run_mode=run_mode,
+            single_candidate=best_candidate,
+        )
+
+        ranked_scores = self._ranked_router_scores(out)
+        best_meta = best_candidate.get("meta") if isinstance(best_candidate.get("meta"), Mapping) else {}
+        selection = selector.run(
+            single={**best_candidate, "label": "single"},
+            dual={**dual_candidate, "label": "dual"},
+            confidence=self._safe_float(out.get("confidence"), default=0.0),
+            ranked_scores=ranked_scores,
+            answer_metadata=best_meta,
+        )
+
+        dual_trace.update(
+            {
+                "triggered": bool(selection.trigger.should_trigger),
+                "reasons": list(selection.trigger.reasons),
+                "confidence": float(selection.trigger.confidence),
+                "ambiguity": float(selection.trigger.ambiguity),
+                "tool_failed": bool(selection.trigger.tool_failed),
+                "selector": {
+                    "winner_source": str(selection.winner.label),
+                    "rule": str(selection.selection_reason),
+                },
+                "candidate_labels": [str(c.label) for c in selection.candidates],
+            }
+        )
+
+        if selection.trigger.should_trigger:
+            candidates = out.get("candidates", [])
+            candidate_rows: list[Dict[str, Any]] = []
+            if isinstance(candidates, list):
+                for row in candidates:
+                    if isinstance(row, Mapping):
+                        candidate_rows.append(dict(row))
+            has_dual = any(str(c.get("agent", "")) == "dual-brain" for c in candidate_rows)
+            if not has_dual:
+                candidate_rows.append(dual_candidate)
+            out["candidates"] = candidate_rows
+
+        if selection.winner.label == "dual":
+            out["best"] = dual_candidate
+            out["confidence"] = max(
+                self._safe_float(out.get("confidence"), default=0.0),
+                self._safe_float(dual_candidate.get("confidence_proxy"), default=0.0),
+            )
+
+            final_trace = trace.get("final")
+            if not isinstance(final_trace, dict):
+                final_trace = {}
+                trace["final"] = final_trace
+            final_trace["agent"] = str(dual_candidate.get("agent", ""))
+            final_trace["score"] = self._safe_float((dual_candidate.get("oracle", {}) or {}).get("score"), default=0.0)
+            final_trace["confidence"] = self._safe_float(out.get("confidence"), default=0.0)
+
+        swarm_trace["dual_gate"] = dual_trace
 
     def hello(self) -> str:
         return "moaa-prime says hello"
@@ -297,6 +509,8 @@ class MoAAPrime:
         history_stats: Optional[Mapping[str, Any]] = None,
         cross_check: bool = False,
         run_id: str | None = None,
+        dual_gate: bool | None = None,
+        dual_gate_config: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
         run_mode = self._resolve_mode(mode)
         _router, _oracle, swarm, _gcel = self._components_for_mode(run_mode)
@@ -321,6 +535,13 @@ class MoAAPrime:
         )
 
         out["mode"] = run_mode
+        self._apply_dual_gate(
+            out=out,
+            prompt=prompt,
+            run_mode=run_mode,
+            dual_gate=dual_gate,
+            dual_gate_config=dual_gate_config,
+        )
 
         trace_run_id = run_id or self._next_run_id(prompt, task_id, run_mode)
 
