@@ -49,6 +49,8 @@ This maps the repo so a new context window can re-sync quickly.
 - `src/moaa_prime/trace/recorder.py`: trace files + router dataset appends
 - `src/moaa_prime/eval/runner.py`: mode-aware eval runner with proxy metrics
 - `src/moaa_prime/eval/report.py`: eval report writer with aggregate metrics
+- `src/moaa_prime/memory/reasoning_bank.py`: global/lane memory storage + recall ranking + PR-6 write payload validation
+- `src/moaa_prime/memory/episodic_lane.py`: PR-6 adaptive local recall window + pruning behavior
 - `src/moaa_prime/eval/failure_taxonomy.py`: full-handoff upgrade failure classification + remediation mapping (required by strict done gate)
 - `src/moaa_prime/schema/answer_object.py`: structured answer normalization contract (required by strict done gate)
 - `src/moaa_prime/llm/factory.py`: stub/ollama model provider selection
@@ -115,6 +117,7 @@ Roadmap PR-5 tests:
 
 Roadmap PR-6 and upgrade tests (required by strict done gate):
 - `tests/test_pr6_memory_regression.py`
+  - deterministic coverage for long chains, entropy spikes, pruning events, and recall stability
 - `tests/test_upgrade_failure_taxonomy.py`
 - `tests/test_upgrade_answer_object.py`
 - `tests/test_pr7_dashboard_smoke.py`

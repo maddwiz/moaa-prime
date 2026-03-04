@@ -2,6 +2,43 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003Q — PR-6 memory regression hardening
+- Implemented PR-6 deterministic memory regression suite:
+  - `tests/test_pr6_memory_regression.py`
+  - coverage includes:
+    - long-chain behavior with recall-before-write verification
+    - entropy-spike novelty bump behavior
+    - pruning-event persistence and recallability
+    - recall stability under unrelated writes
+    - write payload validation for malformed dict payloads
+- Hardened memory integration:
+  - `src/moaa_prime/agents/base.py`
+  - `src/moaa_prime/agents/math_agent.py`
+  - `src/moaa_prime/agents/code_agent.py`
+  - `src/moaa_prime/memory/reasoning_bank.py`
+- Memory behavior changes:
+  - canonical lane/task/text writes from agents (no silent default-task empty writes)
+  - lane-aware recall wiring (`lane_recall`) now active with `kl_like` flow-through from bank recall
+  - memory snippets normalized to JSON-safe strings for stable serialization
+  - recall now executes before write to avoid same-turn memory contamination
+  - malformed positional dict writes now raise deterministic validation errors
+- Validation:
+  - `.venv/bin/pytest -q` -> `112 passed`
+  - ran and refreshed deterministic report pipeline:
+    - `scripts/demo_run.py`
+    - `scripts/bench_run.py`
+    - `scripts/eval_run.py`
+    - `scripts/eval_tool_first.py`
+    - `scripts/eval_compare.py`
+    - `scripts/eval_dual_gate.py`
+    - `scripts/eval_matrix.py`
+    - `scripts/train_router.py`
+    - `scripts/eval_router.py`
+    - `scripts/render_report.py`
+- Updated continuity docs:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003P — PR-0 contract freeze hardening
 - Hardened PR-0 compatibility suite in `tests/test_pr0_contract_compatibility.py`:
   - added public signature compatibility checks for:

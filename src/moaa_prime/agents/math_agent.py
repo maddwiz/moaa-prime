@@ -16,23 +16,15 @@ class MathAgent(BaseAgent):
             meta["tool_first"] = asdict(outcome)
             return AgentResult(agent_name=fallback.agent_name, text=fallback.text, meta=meta)
 
-        write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=outcome.text)
         recall_meta = self._bank_recall(task_id=task_id, prompt=prompt)
+        write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=outcome.text)
 
         return AgentResult(
             agent_name=self.contract.name,
             text=outcome.text,
             meta={
                 "model": "tool_first:sympy",
-                "memory": {
-                    "local_hits": recall_meta["local_hits"],
-                    "local_snippets": recall_meta["local_snippets"],
-                    "bank_hits": recall_meta["bank_hits"],
-                    "bank_snippets": recall_meta["bank_snippets"],
-                    "write": write_meta,
-                    "method": recall_meta["method"],
-                    "task_id": task_id,
-                },
+                "memory": self._memory_meta(task_id=task_id, recall_meta=recall_meta, write_meta=write_meta),
                 "tool_first": asdict(outcome),
             },
         )

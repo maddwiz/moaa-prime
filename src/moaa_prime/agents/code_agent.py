@@ -30,8 +30,8 @@ class CodeAgent(BaseAgent):
         model_name: str,
         extra_tool_meta: Optional[dict] = None,
     ) -> AgentResult:
-        write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=outcome.text)
         recall_meta = self._bank_recall(task_id=task_id, prompt=prompt)
+        write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=outcome.text)
         tool_meta = asdict(outcome)
         if extra_tool_meta:
             tool_meta.update(extra_tool_meta)
@@ -41,15 +41,7 @@ class CodeAgent(BaseAgent):
             text=outcome.text,
             meta={
                 "model": model_name,
-                "memory": {
-                    "local_hits": recall_meta["local_hits"],
-                    "local_snippets": recall_meta["local_snippets"],
-                    "bank_hits": recall_meta["bank_hits"],
-                    "bank_snippets": recall_meta["bank_snippets"],
-                    "write": write_meta,
-                    "method": recall_meta["method"],
-                    "task_id": task_id,
-                },
+                "memory": self._memory_meta(task_id=task_id, recall_meta=recall_meta, write_meta=write_meta),
                 "tool_first": tool_meta,
             },
         )
@@ -85,22 +77,14 @@ class CodeAgent(BaseAgent):
             )
 
         # If proposal is non-code, preserve legacy fallback behavior using the proposal text.
-        write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=proposal.text)
         recall_meta = self._bank_recall(task_id=task_id, prompt=prompt)
+        write_meta = self._bank_write(task_id=task_id, prompt=prompt, text=proposal.text)
         return AgentResult(
             agent_name=self.contract.name,
             text=proposal.text,
             meta={
                 "model": proposal.model,
-                "memory": {
-                    "local_hits": recall_meta["local_hits"],
-                    "local_snippets": recall_meta["local_snippets"],
-                    "bank_hits": recall_meta["bank_hits"],
-                    "bank_snippets": recall_meta["bank_snippets"],
-                    "write": write_meta,
-                    "method": recall_meta["method"],
-                    "task_id": task_id,
-                },
+                "memory": self._memory_meta(task_id=task_id, recall_meta=recall_meta, write_meta=write_meta),
                 "tool_first": {
                     "source": "llm_fallback",
                     "prompt_probe": asdict(prompt_outcome),

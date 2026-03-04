@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5)
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -112,6 +112,21 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary.swarm.pass_rate_delta_vs_baseline`
     - `summary.dual_gated.pass_rate_delta_vs_baseline`
 
+- PR-6 is implemented:
+  - deterministic PR-6 memory regression tests:
+    - `tests/test_pr6_memory_regression.py`
+  - memory integration hardening:
+    - `src/moaa_prime/agents/base.py`
+    - `src/moaa_prime/agents/math_agent.py`
+    - `src/moaa_prime/agents/code_agent.py`
+    - `src/moaa_prime/memory/reasoning_bank.py`
+- PR-6 behavior:
+  - agent memory writes now persist canonical lane/task/text payloads.
+  - agent recall now reads both global bank recall and lane-local recall (`kl_like` aware).
+  - memory snippets are JSON-safe strings for stable report serialization.
+  - recall occurs before write in each handle path to avoid same-turn self-contamination.
+  - malformed positional dict writes are rejected instead of silently writing default/empty rows.
+
 ## Cycle 3 Truth (Learning Loop)
 
 Execution modes:
@@ -183,6 +198,12 @@ PR-5 eval matrix smoke:
 
 ```bash
 .venv/bin/pytest -q tests/test_pr5_eval_matrix_script.py
+```
+
+PR-6 memory regression smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr6_memory_regression.py
 ```
 
 ## Nonstop Codex Swarm Runbook
