@@ -2,6 +2,21 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003C — RouterV3 budget-mode feature conditioning increment
+- Added deterministic budget-mode conditioning to RouterV3 learned features (`src/moaa_prime/router/router_v3.py`):
+  - new feature name: `budget_mode_value`
+  - deterministic mapping: `cheap=0.0`, `balanced=0.5`, `max_quality=1.0`, fallback `0.5`
+  - `build_router_v3_features(...)` now accepts explicit `budget_mode` and emits `budget_mode_value`.
+- Updated default `RouterV3Model` weights with conservative `budget_mode_value` initialization (`0.0`) to minimize perturbation to legacy behavior.
+- Wired runtime and training feature construction to pass budget mode through:
+  - `RouterV3.route_top_k(...)` passes chosen budget mode into `build_router_v3_features(...)`
+  - `records_to_examples(...)` passes dataset row `budget_mode` into `build_router_v3_features(...)`.
+- Preserved backward compatibility for legacy model payloads: loading older `models/router_v3.pt` remains supported and deterministic.
+- Expanded Cycle 3 tests to validate budget-mode feature mapping and expected-success influence when model weights that feature:
+  - `tests/test_cycle3_router_v3.py`
+  - `tests/test_cycle3_router_training.py`
+- Updated Cycle 3 architecture and handoff docs to include budget-mode feature conditioning in router/training sections.
+
 ## Cycle 003B — RouterV3 calibration + training quality increment
 - Extended `RouterV3Model` (`src/moaa_prime/router/router_v3.py`) with deterministic post-logit calibration parameters:
   - `calibration_scale`

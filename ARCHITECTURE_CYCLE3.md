@@ -39,11 +39,13 @@ Feature vector:
 - `latency_efficiency`
 - `cost_efficiency`
 - `memory_alignment`
+- `budget_mode_value` (`cheap=0.0`, `balanced=0.5`, `max_quality=1.0`, fallback `0.5`)
 
 Model:
 - deterministic logistic model (`RouterV3Model`)
 - loaded from `models/router_v3.pt` when present
 - fallback to stable default weights when model file is missing
+- expected-success logits can be conditioned on normalized budget mode via `budget_mode_value`
 - post-logit calibration (`calibration_scale`, `calibration_bias`) is applied deterministically
 - calibration parameters are persisted in `models/router_v3.pt`
 
@@ -111,7 +113,7 @@ Files:
 
 Workflow:
 1. load traces + dataset rows
-2. extract per-agent training examples
+2. extract per-agent training examples, including deterministic budget-mode numeric conditioning
 3. split examples deterministically by `run_id` group for base-training train/validation
 4. train deterministic logistic model with seed and class-balanced sample weighting
 5. apply deterministic validation-NLL early stopping for base training and restore best epoch parameters

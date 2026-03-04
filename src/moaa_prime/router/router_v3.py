@@ -33,6 +33,7 @@ FEATURE_NAMES: list[str] = [
     "latency_efficiency",
     "cost_efficiency",
     "memory_alignment",
+    "budget_mode_value",
 ]
 
 
@@ -53,6 +54,14 @@ BUDGET_PROFILES: dict[str, dict[str, float]] = {
         "latency_weight": 0.07,
     },
 }
+
+
+def _budget_mode_value(budget_mode: str | None) -> float:
+    return {
+        "cheap": 0.0,
+        "balanced": 0.5,
+        "max_quality": 1.0,
+    }.get(str(budget_mode or "").strip().lower(), 0.5)
 
 
 @dataclass(frozen=True)
@@ -80,6 +89,7 @@ class RouterV3Model:
             "latency_efficiency": 0.55,
             "cost_efficiency": 0.50,
             "memory_alignment": 0.35,
+            "budget_mode_value": 0.0,
         }
     )
     bias: float = -1.25
@@ -167,6 +177,7 @@ def build_router_v3_features(
     history_row: Mapping[str, Any] | None = None,
     memory_alignment: float = 0.5,
     budget: RoutingBudget | None = None,
+    budget_mode: str = "balanced",
     embedding_dim: int = 24,
     seed: int = 0,
 ) -> Dict[str, float]:
@@ -201,6 +212,7 @@ def build_router_v3_features(
         "latency_efficiency": latency_efficiency,
         "cost_efficiency": cost_efficiency,
         "memory_alignment": _clamp(float(memory_alignment), 0.0, 1.0),
+        "budget_mode_value": _budget_mode_value(budget_mode),
     }
 
 
@@ -352,6 +364,7 @@ class RouterV3:
                 history_row=history_row,
                 memory_alignment=memory_alignment,
                 budget=budget_obj,
+                budget_mode=chosen_budget_mode,
                 embedding_dim=self.embedding_dim,
                 seed=self.seed,
             )
@@ -373,11 +386,6 @@ class RouterV3:
             )
             components = {k: float(v) for k, v in features.items()}
             components["expected_success"] = float(expected_success)
-            components["budget_mode_value"] = {
-                "cheap": 0.0,
-                "balanced": 0.5,
-                "max_quality": 1.0,
-            }.get(chosen_budget_mode, 0.5)
 
             decisions.append(
                 RouteDecisionV3(

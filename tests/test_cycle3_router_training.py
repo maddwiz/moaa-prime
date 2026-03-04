@@ -123,6 +123,17 @@ def test_router_training_is_deterministic_for_seed():
     assert model_a.calibration_bias == model_b.calibration_bias
 
 
+def test_records_to_examples_includes_budget_mode_feature_value():
+    examples = records_to_examples(_records(), seed=13)
+
+    by_run = {}
+    for ex in examples:
+        by_run.setdefault(ex.run_id, []).append(float(ex.features["budget_mode_value"]))
+
+    assert sorted(set(by_run["r1"])) == [0.5]
+    assert sorted(set(by_run["r2"])) == [0.0]
+
+
 def test_router_training_supports_deterministic_calibration_toggle():
     examples = records_to_examples(_records(), seed=21)
 

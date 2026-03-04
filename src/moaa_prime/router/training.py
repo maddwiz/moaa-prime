@@ -155,6 +155,7 @@ def records_to_examples(
                 history_row=history_row,
                 memory_alignment=float(m_payload.get("confidence", 0.5)),
                 budget=RoutingBudget(),
+                budget_mode=budget_mode,
                 embedding_dim=embedding_dim,
                 seed=seed,
             )

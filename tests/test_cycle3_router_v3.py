@@ -1,7 +1,13 @@
 import math
 
 from moaa_prime.contracts import Contract
-from moaa_prime.router.router_v3 import RouterV3, RouterV3Model, load_router_v3_model, save_router_v3_model
+from moaa_prime.router.router_v3 import (
+    RouterV3,
+    RouterV3Model,
+    build_router_v3_features,
+    load_router_v3_model,
+    save_router_v3_model,
+)
 
 
 class DummyAgent:
@@ -112,3 +118,109 @@ def test_router_v3_model_legacy_payload_defaults_identity_calibration():
     )
     assert model.calibration_scale == 1.0
     assert model.calibration_bias == 0.0
+
+
+def test_router_v3_features_include_budget_mode_value_mapping():
+    contract = Contract(
+        name="agent",
+        domains=["code"],
+        competence=0.7,
+        reliability=0.8,
+        cost_prior=0.3,
+        description="generalist",
+    )
+    history_row = {
+        "success_rate": 0.6,
+        "avg_oracle_score": 0.62,
+        "avg_latency_ms": 120.0,
+        "avg_cost_tokens": 90.0,
+    }
+
+    cheap = build_router_v3_features(
+        "debug this python function",
+        contract,
+        history_row=history_row,
+        budget_mode="cheap",
+        seed=17,
+    )
+    balanced = build_router_v3_features(
+        "debug this python function",
+        contract,
+        history_row=history_row,
+        budget_mode="balanced",
+        seed=17,
+    )
+    max_quality = build_router_v3_features(
+        "debug this python function",
+        contract,
+        history_row=history_row,
+        budget_mode="max_quality",
+        seed=17,
+    )
+    fallback = build_router_v3_features(
+        "debug this python function",
+        contract,
+        history_row=history_row,
+        budget_mode="unexpected-mode",
+        seed=17,
+    )
+
+    assert cheap["budget_mode_value"] == 0.0
+    assert balanced["budget_mode_value"] == 0.5
+    assert max_quality["budget_mode_value"] == 1.0
+    assert fallback["budget_mode_value"] == 0.5
+
+
+def test_router_v3_budget_mode_feature_can_influence_expected_success():
+    contract = Contract(
+        name="agent",
+        domains=["code"],
+        competence=0.7,
+        reliability=0.8,
+        cost_prior=0.3,
+        description="generalist",
+    )
+    history_row = {
+        "success_rate": 0.6,
+        "avg_oracle_score": 0.62,
+        "avg_latency_ms": 120.0,
+        "avg_cost_tokens": 90.0,
+    }
+    model = RouterV3Model(
+        feature_names=["budget_mode_value"],
+        weights={"budget_mode_value": 6.0},
+        bias=-3.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        seed=17,
+    )
+
+    p_cheap = model.predict_expected_success(
+        build_router_v3_features(
+            "debug this python function",
+            contract,
+            history_row=history_row,
+            budget_mode="cheap",
+            seed=17,
+        )
+    )
+    p_balanced = model.predict_expected_success(
+        build_router_v3_features(
+            "debug this python function",
+            contract,
+            history_row=history_row,
+            budget_mode="balanced",
+            seed=17,
+        )
+    )
+    p_max_quality = model.predict_expected_success(
+        build_router_v3_features(
+            "debug this python function",
+            contract,
+            history_row=history_row,
+            budget_mode="max_quality",
+            seed=17,
+        )
+    )
+
+    assert p_cheap < p_balanced < p_max_quality

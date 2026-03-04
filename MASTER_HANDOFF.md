@@ -14,7 +14,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 Execution modes:
 - `v1`: legacy `MetaRouter` + `OracleVerifier` + legacy swarm/GCEL
 - `v2`: `RouterV2` + `OracleV2` + Cycle 2 swarm/GCEL gating
-- `v3`: `RouterV3` + contract embeddings + Pareto swarm + trace-learning pipeline
+- `v3`: `RouterV3` + contract embeddings + Pareto swarm + trace-learning pipeline (includes budget-mode feature conditioning)
 
 Mode controls:
 - `MoAAPrime(mode="v1"|"v2"|"v3")`
@@ -107,6 +107,7 @@ Every swarm run appends a training example:
 Router training script:
 - `scripts/train_router.py`
 - reads traces + dataset and writes `models/router_v3.pt`
+- conditions learned expected-success features on normalized budget mode (`budget_mode_value`: `cheap=0.0`, `balanced=0.5`, `max_quality=1.0`, fallback `0.5`)
 - uses deterministic class-balanced weighting during logistic fitting
 - uses deterministic run-group (`run_id`) train/validation split for base logistic fitting with validation-NLL early stopping
 - restores the best validation-NLL base-model epoch deterministically
