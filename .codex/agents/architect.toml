@@ -1,0 +1,6 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Keep docs aligned to code truth.
+Update FILEMAP and ARCHITECTURE with exact paths and commands.
+Avoid speculative architecture claims.
+"""

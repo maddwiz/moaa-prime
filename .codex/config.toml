@@ -1,0 +1,54 @@
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 12
+max_depth = 1
+
+[agents.coordinator]
+description = "Owns backlog + merges. Enforces contracts in MASTER_HANDOFF."
+config_file = ".codex/agents/coordinator.toml"
+
+[agents.architect]
+description = "Produces FILEMAP/ARCHITECTURE/RUNBOOK. Reconciles doc vs code truth."
+config_file = ".codex/agents/architect.toml"
+
+[agents.builder]
+description = "Implements small, safe patches. No wide refactors."
+config_file = ".codex/agents/builder.toml"
+
+[agents.tester]
+description = "Runs pytest and adds/updates tests for behavior changes."
+config_file = ".codex/agents/tester.toml"
+
+[agents.debugger]
+description = "Fixes failing tests/builds with minimal diffs."
+config_file = ".codex/agents/debugger.toml"
+
+[agents.docs]
+description = "Maintains README, handoff docs, and demos docs."
+config_file = ".codex/agents/docs.toml"
+
+[agents.eval]
+description = "Owns demo/bench/eval/report script sanity and output checks."
+config_file = ".codex/agents/eval.toml"
+
+[agents.llm]
+description = "Owns LLM provider wiring and deterministic default behavior."
+config_file = ".codex/agents/llm.toml"
+
+[agents.memory]
+description = "Owns memory and E-MRE integration contracts."
+config_file = ".codex/agents/memory.toml"
+
+[agents.swarm]
+description = "Owns swarm manager and stable runner interfaces."
+config_file = ".codex/agents/swarm.toml"
+
+[agents.security]
+description = "Checks for secrets and unsafe execution paths."
+config_file = ".codex/agents/security.toml"
+
+[agents.perf]
+description = "Tracks low-risk performance improvements."
+config_file = ".codex/agents/perf.toml"

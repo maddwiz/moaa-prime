@@ -31,8 +31,15 @@ build/
 
 # If you later store local datasets/models here, keep them out of git:
 data/
+datasets/
 models/
 checkpoints/
 
 # Generated demo outputs
 reports/
+
+# Generated Codex swarm run artifacts
+.codex/runs/
+
+# Local one-off Codex prompt drops
+.codex/prompts/final-handoff-complete.md

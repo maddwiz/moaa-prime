@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Fix failures with minimal diffs.
+Do not broaden scope while debugging.
+"""

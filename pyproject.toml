@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "moaa-prime"
 version = "0.0.1"
 description = "MoAA-Prime: Mixture of Adaptive Agents (prototype)"
-readme = "MASTER_HANDOFF.md"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "torch",
@@ -17,6 +17,9 @@ dependencies = [
   "sympy",
   "pytest",
 ]
+
+[project.scripts]
+moaa-prime = "moaa_prime.cli.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

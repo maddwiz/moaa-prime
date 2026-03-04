@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Preserve deterministic stub defaults.
+Keep optional Ollama wiring behind env vars.
+"""

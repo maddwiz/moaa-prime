@@ -1,7 +1,194 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+import json
+from pathlib import Path
+import re
+import statistics
+from typing import Any, Dict, Mapping
+
+try:
+    import yaml
+except Exception:  # pragma: no cover
+    yaml = None  # type: ignore
+
+
+def _clamp(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+
+def _coerce_mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "pass", "passed", "ok", "success", "succeeded"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "fail", "failed", "error"}:
+            return False
+    return bool(default)
+
+
+def _normalize_stage(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _signal_from_verification_payload(
+    verification: Mapping[str, Any],
+    *,
+    source: str,
+    tool_attempted: bool,
+    tool_success: bool,
+) -> Dict[str, Any]:
+    stage = _normalize_stage(verification.get("stage"))
+    raw_status = str(verification.get("status", "") or "").strip().lower()
+    passed = _coerce_bool(verification.get("passed"), default=(raw_status == "pass"))
+    status = raw_status if raw_status in {"pass", "fail"} else ("pass" if passed else "fail")
+    exec_ran = _coerce_bool(verification.get("exec_ran"), default=(stage == "exec" and passed))
+    return {
+        "status": status,
+        "passed": passed,
+        "stage": stage,
+        "error_type": verification.get("error_type"),
+        "error_message": verification.get("error_message"),
+        "exec_ran": exec_ran,
+        "source": source,
+        "tool_attempted": bool(tool_attempted),
+        "tool_success": bool(tool_success),
+        "dominant_eligible": bool(tool_attempted and tool_success and passed),
+    }
+
+
+def _extract_verification_signal(answer_metadata: Mapping[str, Any] | None) -> Dict[str, Any]:
+    meta = _coerce_mapping(answer_metadata)
+    tool_meta = _coerce_mapping(meta.get("tool_first"))
+    tool_attempted = _coerce_bool(tool_meta.get("attempted"), default=False)
+    tool_success = _coerce_bool(tool_meta.get("success"), default=False)
+    verification = _coerce_mapping(tool_meta.get("verification"))
+    if verification:
+        return _signal_from_verification_payload(
+            verification,
+            source="tool_first.verification",
+            tool_attempted=tool_attempted,
+            tool_success=tool_success,
+        )
+
+    # Backward-compatible fallback for deterministic tool outcomes that do not
+    # carry a nested verification object (for example, math tool-first success).
+    if tool_attempted and "success" in tool_meta:
+        stage = _normalize_stage(tool_meta.get("mode") or tool_meta.get("stage") or tool_meta.get("solver") or "tool")
+        passed = bool(tool_success)
+        return {
+            "status": "pass" if passed else "fail",
+            "passed": passed,
+            "stage": stage,
+            "error_type": tool_meta.get("error_type"),
+            "error_message": tool_meta.get("error") or tool_meta.get("error_message"),
+            "exec_ran": False,
+            "source": "tool_first.outcome",
+            "tool_attempted": bool(tool_attempted),
+            "tool_success": bool(tool_success),
+            "dominant_eligible": bool(tool_attempted and tool_success and passed),
+        }
+
+    return {}
+
+
+def _verification_score_delta(signal: Mapping[str, Any]) -> float:
+    if not signal:
+        return 0.0
+
+    passed = _coerce_bool(signal.get("passed"), default=False)
+    stage = _normalize_stage(signal.get("stage"))
+    exec_ran = _coerce_bool(signal.get("exec_ran"), default=False)
+
+    if passed:
+        delta = 0.05
+        if stage == "exec" and exec_ran:
+            delta += 0.02
+        return _clamp(delta, 0.0, 0.12)
+
+    delta = -0.08
+    if stage == "exec" and exec_ran:
+        delta -= 0.02
+    return _clamp(delta, -0.20, 0.0)
+
+
+def _verification_dominance_floor(signal: Mapping[str, Any]) -> float | None:
+    if not signal:
+        return None
+    if not _coerce_bool(signal.get("passed"), default=False):
+        return None
+    if not _coerce_bool(signal.get("dominant_eligible"), default=False):
+        return None
+
+    stage = _normalize_stage(signal.get("stage"))
+    exec_ran = _coerce_bool(signal.get("exec_ran"), default=False)
+    if stage == "exec" and exec_ran:
+        return 0.97
+    if stage == "compile":
+        return 0.95
+    if stage in {"equation", "expression", "solve", "math", "sympy"}:
+        return 0.94
+    return 0.93
+
+
+def _apply_verification_calibration(base_score: float, signal: Mapping[str, Any]) -> tuple[float, float, Dict[str, Any] | None]:
+    if not signal:
+        score = _clamp(base_score, 0.0, 1.0)
+        return score, 0.0, None
+
+    legacy_delta = _verification_score_delta(signal)
+    score = _clamp(base_score + legacy_delta, 0.0, 1.0)
+
+    floor = _verification_dominance_floor(signal)
+    policy = "legacy_delta"
+    if floor is not None:
+        score = _clamp(max(score, float(floor)), 0.0, 1.0)
+        policy = "dominant_pass_floor"
+
+    return score, float(score - base_score), {
+        "policy": policy,
+        "legacy_delta": float(legacy_delta),
+        "dominance_floor": floor,
+    }
+
+
+_TOKEN_RE = re.compile(r"[a-z0-9_]+")
+_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "but",
+    "by",
+    "for",
+    "from",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "was",
+    "with",
+}
 
 
 @dataclass(frozen=True)
@@ -13,33 +200,62 @@ class OracleVerdict:
 
 class OracleVerifier:
     """
-    Phase 3 Oracle.
+    Phase 3 Oracle (v1).
 
     IMPORTANT CONTRACT:
     - verdict(prompt, answer) returns OracleVerdict (rich object)
     - score(prompt, answer) returns float in [0, 1] (simple numeric)
     """
 
-    def verdict(self, prompt: str, answer: str) -> OracleVerdict:
+    def verdict(
+        self,
+        prompt: str,
+        answer: str,
+        *,
+        answer_metadata: Mapping[str, Any] | None = None,
+    ) -> OracleVerdict:
         # v0 heuristic oracle (simple + deterministic)
         p = (prompt or "").lower()
-        a = (answer or "").lower()
+        a = str(answer or "").lower()
 
         # Tiny heuristics so tests + demos have stable behavior
+        base_score = 0.5
+        reason = "default oracle"
         if "solve" in p and ("x=" in a or "x =" in a):
-            return OracleVerdict(score=0.9, reason="contains x= form")
-
-        if "python" in p or "code" in p:
+            base_score = 0.9
+            reason = "contains x= form"
+        elif "python" in p or "code" in p:
             # if they mention a likely code term, give medium-high
             if "def " in a or "traceback" in a or "error" in a:
-                return OracleVerdict(score=0.8, reason="looks like code-debug response")
-            return OracleVerdict(score=0.6, reason="code-related response")
+                base_score = 0.8
+                reason = "looks like code-debug response"
+            else:
+                base_score = 0.6
+                reason = "code-related response"
 
-        # Default: neutral
-        return OracleVerdict(score=0.5, reason="default oracle")
+        signal = _extract_verification_signal(answer_metadata)
+        score, verification_delta, verification_calibration = _apply_verification_calibration(base_score, signal)
 
-    def score(self, prompt: str, answer: str) -> float:
-        v = self.verdict(prompt, answer)
+        if signal:
+            reason = f"{reason}; verifier={signal.get('status', 'unknown')}"
+            if verification_calibration and verification_calibration.get("policy") == "dominant_pass_floor":
+                reason = f"{reason}; calibration=dominant-pass"
+            return OracleVerdict(
+                score=score,
+                reason=reason,
+                meta={
+                    "oracle": "v1",
+                    "base_score": base_score,
+                    "verification_delta": verification_delta,
+                    "verification_calibration": verification_calibration,
+                    "verification_signal": dict(signal),
+                },
+            )
+
+        return OracleVerdict(score=score, reason=reason)
+
+    def score(self, prompt: str, answer: str, *, answer_metadata: Mapping[str, Any] | None = None) -> float:
+        v = self.verdict(prompt, answer, answer_metadata=answer_metadata)
         # Force [0,1] and float
         s = float(v.score)
         if s < 0.0:
@@ -47,3 +263,266 @@ class OracleVerifier:
         if s > 1.0:
             return 1.0
         return s
+
+
+class OracleV2:
+    """
+    Cycle 2 Oracle with weighted components and pluggable rubric config.
+
+    Components in [0,1]:
+    - correctness_proxy
+    - coherence
+    - constraint_adherence
+    - safety_overreach
+    - grounding
+    """
+
+    _DEFAULT_RUBRIC: Dict[str, Any] = {
+        "weights": {
+            "correctness_proxy": 0.34,
+            "coherence": 0.20,
+            "constraint_adherence": 0.18,
+            "safety_overreach": 0.16,
+            "grounding": 0.12,
+        },
+        "consistency": {
+            "max_variance": 1.0e-6,
+        },
+        "safety": {
+            "forbidden_terms": ["exploit", "malware", "payload", "credential dump", "ransomware"],
+        },
+    }
+
+    def __init__(self, *, rubric_path: str | None = None, seed: int = 0) -> None:
+        self.seed = int(seed)
+        self.rubric_path = rubric_path
+        self.rubric = self._load_rubric(rubric_path)
+
+    def _load_rubric(self, rubric_path: str | None) -> Dict[str, Any]:
+        rubric = dict(self._DEFAULT_RUBRIC)
+
+        if rubric_path:
+            path = Path(rubric_path)
+            if path.exists():
+                loaded: Dict[str, Any]
+                text = path.read_text(encoding="utf-8")
+                if path.suffix.lower() in {".yaml", ".yml"}:
+                    if yaml is None:
+                        loaded = {}
+                    else:
+                        loaded = yaml.safe_load(text) or {}
+                else:
+                    loaded = json.loads(text)
+                if isinstance(loaded, dict):
+                    rubric = self._deep_merge(rubric, loaded)
+        else:
+            default_file = Path(__file__).resolve().parent / "rubric_v2.yaml"
+            if default_file.exists() and yaml is not None:
+                loaded = yaml.safe_load(default_file.read_text(encoding="utf-8")) or {}
+                if isinstance(loaded, dict):
+                    rubric = self._deep_merge(rubric, loaded)
+
+        weights = dict(rubric.get("weights", {}))
+        total = sum(float(weights.get(k, 0.0)) for k in self._DEFAULT_RUBRIC["weights"].keys())
+        if total <= 0.0:
+            total = 1.0
+        normalized = {
+            k: float(weights.get(k, self._DEFAULT_RUBRIC["weights"][k])) / total
+            for k in self._DEFAULT_RUBRIC["weights"].keys()
+        }
+        rubric["weights"] = normalized
+        return rubric
+
+    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(base)
+        for k, v in override.items():
+            if isinstance(v, dict) and isinstance(out.get(k), dict):
+                out[k] = self._deep_merge(dict(out[k]), v)
+            else:
+                out[k] = v
+        return out
+
+    def _tokenize(self, text: str) -> list[str]:
+        return _TOKEN_RE.findall((text or "").lower())
+
+    def _important_tokens(self, text: str) -> set[str]:
+        return {t for t in self._tokenize(text) if len(t) > 2 and t not in _STOPWORDS}
+
+    def _correctness_proxy(self, prompt: str, answer: str, p_tokens: set[str], a_tokens: set[str]) -> float:
+        p = (prompt or "").lower()
+        a = (answer or "").lower()
+
+        if "solve" in p or "equation" in p:
+            if "x=" in a or "x =" in a:
+                return 0.95
+            if any(ch.isdigit() for ch in a):
+                return 0.75
+            return 0.30
+
+        if "python" in p or "code" in p or "function" in p:
+            if "def " in a:
+                return 0.90
+            if "return" in a:
+                return 0.75
+            return 0.45
+
+        if not p_tokens:
+            return 0.5
+
+        overlap = len(p_tokens.intersection(a_tokens)) / float(max(1, len(p_tokens)))
+        return _clamp(0.35 + (0.65 * overlap), 0.0, 1.0)
+
+    def _coherence(self, answer: str) -> float:
+        a = (answer or "").strip()
+        if not a:
+            return 0.0
+
+        tokens = self._tokenize(a)
+        n = len(tokens)
+        if n < 2:
+            return 0.2
+
+        if n <= 6:
+            length_score = 0.60
+        elif n <= 80:
+            length_score = 0.90
+        elif n <= 180:
+            length_score = 0.75
+        else:
+            length_score = 0.45
+
+        punctuation_bonus = 0.05 if any(ch in a for ch in ".:;") else 0.0
+        newline_penalty = 0.10 if a.count("\n") > 12 else 0.0
+        return _clamp(length_score + punctuation_bonus - newline_penalty, 0.0, 1.0)
+
+    def _constraint_adherence(self, prompt: str, answer: str) -> float:
+        p = (prompt or "").lower()
+        a = (answer or "")
+        a_l = a.lower()
+
+        score = 0.70
+
+        if "return only x" in p:
+            if "x=" in a_l or a_l.strip().isdigit() or a_l.strip() in {"x", "x = 2", "2"}:
+                score = 0.95
+            else:
+                score = 0.35
+
+        if "json" in p:
+            has_braces = "{" in a and "}" in a
+            score = min(score, 0.90 if has_braces else 0.40)
+
+        if "concise" in p or "brief" in p:
+            score = min(score, 0.90 if len(self._tokenize(a_l)) < 80 else 0.55)
+
+        if "safe" in p and "1/0" in p:
+            safe_hint = ("try" in a_l and "except" in a_l) or "zero division" in a_l
+            score = min(score, 0.92 if safe_hint else 0.50)
+
+        return _clamp(score, 0.0, 1.0)
+
+    def _safety_overreach(self, answer: str) -> float:
+        a_l = (answer or "").lower()
+        forbidden = self.rubric.get("safety", {}).get("forbidden_terms", [])
+
+        score = 0.95
+        for term in forbidden:
+            if str(term).lower() in a_l:
+                score -= 0.25
+
+        if "guaranteed" in a_l and "always" in a_l:
+            score -= 0.15
+
+        if "i made this up" in a_l:
+            score -= 0.30
+
+        return _clamp(score, 0.0, 1.0)
+
+    def _grounding(self, prompt: str, answer: str, p_tokens: set[str], a_tokens: set[str]) -> float:
+        if not p_tokens:
+            return 0.5
+        overlap = len(p_tokens.intersection(a_tokens)) / float(max(1, len(p_tokens)))
+
+        p = (prompt or "").lower()
+        a = (answer or "").lower()
+        structure_bonus = 0.08 if (("solve" in p and "x" in a) or ("python" in p and "def " in a)) else 0.0
+        return _clamp((0.30 + (0.62 * overlap) + structure_bonus), 0.0, 1.0)
+
+    def _component_scores(self, prompt: str, answer: str) -> Dict[str, float]:
+        p_tokens = self._important_tokens(prompt)
+        a_tokens = self._important_tokens(answer)
+
+        components = {
+            "correctness_proxy": self._correctness_proxy(prompt, answer, p_tokens, a_tokens),
+            "coherence": self._coherence(answer),
+            "constraint_adherence": self._constraint_adherence(prompt, answer),
+            "safety_overreach": self._safety_overreach(answer),
+            "grounding": self._grounding(prompt, answer, p_tokens, a_tokens),
+        }
+        return {k: _clamp(float(v), 0.0, 1.0) for k, v in components.items()}
+
+    def verdict(
+        self,
+        prompt: str,
+        answer: str,
+        *,
+        answer_metadata: Mapping[str, Any] | None = None,
+    ) -> OracleVerdict:
+        answer_text = str(answer or "")
+        components = self._component_scores(prompt or "", answer_text)
+        weights = self.rubric["weights"]
+
+        base_score = 0.0
+        for key, weight in weights.items():
+            base_score += float(weight) * float(components.get(key, 0.0))
+        base_score = _clamp(base_score, 0.0, 1.0)
+
+        signal = _extract_verification_signal(answer_metadata)
+        score, verification_delta, verification_calibration = _apply_verification_calibration(base_score, signal)
+
+        reason = (
+            f"weighted_oracle_v2; correctness={components['correctness_proxy']:.2f}; "
+            f"coherence={components['coherence']:.2f}; grounding={components['grounding']:.2f}"
+        )
+        if signal:
+            reason = f"{reason}; verifier={signal.get('status', 'unknown')}"
+            if verification_calibration and verification_calibration.get("policy") == "dominant_pass_floor":
+                reason = f"{reason}; calibration=dominant-pass"
+
+        meta: Dict[str, Any] = {
+            "oracle": "v2",
+            "weights": {k: float(v) for k, v in weights.items()},
+            "components": components,
+            "rubric_path": self.rubric_path or "builtin:rubric_v2.yaml",
+        }
+        if signal:
+            meta["base_score"] = base_score
+            meta["verification_delta"] = verification_delta
+            meta["verification_calibration"] = verification_calibration
+            meta["verification_signal"] = dict(signal)
+
+        return OracleVerdict(
+            score=score,
+            reason=reason,
+            meta=meta,
+        )
+
+    def score(self, prompt: str, answer: str, *, answer_metadata: Mapping[str, Any] | None = None) -> float:
+        return float(self.verdict(prompt, answer, answer_metadata=answer_metadata).score)
+
+    def consistency_check(self, prompt: str, answer: str, repeats: int = 5) -> Dict[str, float | bool]:
+        r = max(1, int(repeats))
+        values = [self.score(prompt, answer) for _ in range(r)]
+        mean = float(sum(values) / len(values))
+        variance = float(statistics.pvariance(values)) if len(values) > 1 else 0.0
+        max_delta = float(max(values) - min(values)) if values else 0.0
+
+        max_variance = float(self.rubric.get("consistency", {}).get("max_variance", 1.0e-6))
+        stable = bool(variance <= max_variance)
+
+        return {
+            "mean": mean,
+            "variance": variance,
+            "max_delta": max_delta,
+            "stable": stable,
+        }

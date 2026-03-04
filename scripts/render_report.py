@@ -9,7 +9,7 @@ def main():
 
     out = {
         "summary": {
-            "agents_used": list({demo[k]["decision"]["agent"] for k in ["once_math", "once_code"]}),
+            "agents_used": sorted({demo[k]["decision"]["agent"] for k in ["once_math", "once_code"]}),
             "swarm_candidates": len(demo["swarm"]["candidates"]),
             "latency_ms": bench,
             "eval_cases": evalr["num_cases"]

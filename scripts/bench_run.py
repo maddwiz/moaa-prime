@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
+
+# Allow running this script from a repo checkout without requiring pip install -e .
+_SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 from moaa_prime.core.app import MoAAPrime
 
@@ -17,10 +23,13 @@ def timed(fn, n: int = 10) -> float:
 
 
 def main() -> int:
-    app = MoAAPrime()
+    mode = (os.getenv("MOAA_BENCH_MODE") or "v3").strip().lower()
+    seed = int(os.getenv("MOAA_BENCH_SEED") or "7")
 
-    once_ms = timed(lambda: app.run_once("2+2=?", task_id="bench"), n=30) * 1000.0
-    swarm_ms = timed(lambda: app.run_swarm("Explain 2+2", task_id="bench"), n=10) * 1000.0
+    app = MoAAPrime(mode=mode, seed=seed)
+
+    once_ms = timed(lambda: app.run_once("2+2=?", task_id="bench", mode=mode), n=30) * 1000.0
+    swarm_ms = timed(lambda: app.run_swarm("Explain 2+2", task_id="bench", mode=mode), n=10) * 1000.0
 
     provider = (os.getenv("MOAA_LLM_PROVIDER") or "stub").strip().lower()
     model = os.getenv("MOAA_OLLAMA_MODEL") or ""
@@ -30,6 +39,8 @@ def main() -> int:
     )
 
     report = {
+        "mode": mode,
+        "seed": seed,
         "once_avg_ms": once_ms,
         "swarm_avg_ms": swarm_ms,
         "note": note,

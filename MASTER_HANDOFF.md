@@ -1,133 +1,398 @@
-# MASTER_HANDOFF — MoAA-Prime (living continuity doc)
+# MASTER_HANDOFF — MoAA-Prime
 
-Owner: Desmond
-Local path: ~/moaa-prime
+Owner: Desmond  
+Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 
-Golden rules:
-- FULL FILE REPLACEMENTS ONLY (no partial edits).
-- Continuity docs must be COMPLETE (Phase 1 → current).
-- After each phase: update MASTER_HANDOFF.md + FILEMAP.md + CHANGELOG.md, run tests, commit.
+## Golden Rules
 
----
+- Keep changes small, test-backed, and reversible.
+- Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
+- Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## What MoAA-Prime is (current)
-MoAA-Prime is a “Mixture of Adaptive Agents” system:
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7, PR-8)
 
-- Agents with contracts (domains/tools/competence)
-- Router chooses agent(s) for prompts/tasks
-- Oracle scores truth/quality
-- Swarm manager runs multi-candidate deliberation
-- Memory: per-agent lanes + global ReasoningBank
-- E-MRE upgrades: AEDMC + SH-COS + GFO + curiosity bump hooks
-- SGM + Energy Fusion scaffolding
-- SFC stability/budget hooks
-- Dual-brain hooks (Architect / Oracle split)
-- GCEL evolves contracts over time
-- Eval + demo + bench scripts for a “hard-polish” demo bundle
-- Optional real model wiring via Ollama (keeps tests passing by default)
+- PR-0 is implemented:
+  - contract freeze doc: `CONTRACTS.md`
+  - compatibility test suite: `tests/test_pr0_contract_compatibility.py`
+  - hardened compatibility coverage:
+    - frozen `MoAAPrime.run_once` / `MoAAPrime.run_swarm` required positional signatures
+    - conditional `trace_path` assertion (`run_id` absent/present behavior)
+    - additive optional field policy checks (`route_trace`, router intent metadata, dual-gate trace, candidate critique)
+    - per-entry schema assertions for `trace.router.ranked[*]` and `trace.oracle.scores[*]`
+- Frozen contracts now explicitly cover:
+  - router output shape (`run_once(...).decision`)
+  - swarm output shape (`run_swarm(...)`)
+  - agent interface (`BaseAgent.handle` / `AgentResult`)
+  - memory meta required counters (`local_hits`, `bank_hits`)
+- Compatibility policy:
+  - required keys and required-key types are stable
+  - additive fields are allowed
+  - no silent contract removals/type changes
 
----
+- PR-1 is implemented:
+  - tool-first policy module: `src/moaa_prime/policy/tool_first.py`
+  - agent integration: `src/moaa_prime/agents/math_agent.py`, `src/moaa_prime/agents/code_agent.py`
+  - deterministic policy tests: `tests/test_pr1_tool_first_policy.py`
+  - deterministic eval artifact script: `scripts/eval_tool_first.py` -> `reports/tool_first_eval.json` and compatibility alias `reports/eval_tool_first.json`
+- PR-1 behavior:
+  - `MathAgent` runs SymPy-first equation/expression solving, then falls back safely.
+  - `CodeAgent` runs deterministic verify/repair on prompt code when present.
+  - For natural language code prompts, `CodeAgent` does proposal -> verify/repair loop with bounded retries.
 
-## Current truth snapshot (verify anytime)
-Run tests:
-  pytest -q
+- PR-2 is implemented:
+  - deterministic code sandbox verifier: `src/moaa_prime/tools/code_sandbox.py`
+  - verifier signal integrated into oracle confidence: `src/moaa_prime/oracle/verifier.py`
+  - deterministic PR-2 verifier/repair-loop tests: `tests/test_pr2_code_sandbox_verifier.py`
+- PR-2 behavior:
+  - sandbox module owns deterministic Python extraction and compile/exec verification paths.
+  - sandbox verify path includes compile-fail, exec-fail, and stdout-capture pass cases.
+  - oracle confidence applies deterministic additive verifier deltas while preserving no-signal behavior.
+  - code repair loop and `CodeAgent` metadata preserve verifier fields (`stage`, `error_type`, `line`, etc.).
 
-Known-good state:
-- pytest passes (latest seen: 21 passed)
-- demo script writes: reports/demo_run.json
-- bench script writes: reports/bench.json
-- with Ollama enabled, bench runs slower (real model latency)
+- PR-3 is implemented:
+  - deterministic intent-first rules: `src/moaa_prime/router/intent.py`
+  - router integration: `src/moaa_prime/router/router_v2.py`, `src/moaa_prime/router/router_v3.py`
+  - trace metadata integration: `src/moaa_prime/swarm/manager.py`, `src/moaa_prime/core/app.py`
+  - deterministic PR-3 tests: `tests/test_pr3_router_intent_trace.py`
+  - router eval non-regression test: `tests/test_pr3_router_eval_non_regression.py`
+- PR-3 behavior:
+  - router intent classifier deterministically labels prompts as `math`, `code`, or `general`.
+  - routing decisions include additive intent metadata (`intent`, `matched_features`, `intent_scores`).
+  - swarm `trace.router` now emits additive PR-3 trace fields:
+    - `intent`
+    - `matched_features`
+    - `chosen_agent`
+    - `alternatives`
+    - `ranking_rationale`
+  - `run_once(...)` now emits additive `route_trace` for debug surfaces without changing required contract keys.
 
----
+- PR-4 is implemented:
+  - gated dual selector module: `src/moaa_prime/duality/gated_dual.py`
+  - duality package exports: `src/moaa_prime/duality/__init__.py`
+  - app integration (opt-in and additive): `src/moaa_prime/core/app.py`
+  - deterministic PR-4 tests:
+    - `tests/test_pr4_gated_dual.py`
+    - `tests/test_pr4_dual_gate_eval_script.py`
+  - deterministic PR-4 eval artifact script:
+    - `scripts/eval_dual_gate.py` -> `reports/dual_gated_eval.json`
+- PR-4 behavior:
+  - `run_swarm(...)` accepts additive kwargs:
+    - `dual_gate: bool | None` (default off)
+    - `dual_gate_config: Mapping[str, Any] | None`
+  - trigger conditions are deterministic:
+    - low confidence
+    - high ambiguity
+    - tool-fail
+  - deterministic best-of selector rule order:
+    1. tool-verified winner
+    2. higher oracle score
+    3. shorter/cleaner fallback tie-break
+  - additive trace/debug surface:
+    - `trace.swarm.dual_gate` with trigger reasons and selector outcome
+    - dual candidate metadata under `candidate.meta.dual_brain` and `candidate.meta.dual_gate`
 
-## How to run (simple)
+- PR-5 is implemented:
+  - deterministic eval matrix script:
+    - `scripts/eval_matrix.py` -> `reports/eval_matrix.json`
+  - deterministic PR-5 tests:
+    - `tests/test_pr5_eval_matrix_script.py`
+- PR-5 behavior:
+  - one command emits a stable comparative matrix report covering:
+    - `baseline_single`
+    - `swarm`
+    - `dual_gated`
+    - `tool_first` on/off
+    - `memory` on/off
+    - `sfc` on/off
+  - report schema includes:
+    - mode-level pass rate, latency proxy, tool verification rate, and oracle distribution
+    - run-level counts (`num_cases`, `scored_cases`, `passed`)
+    - `summary` delta blocks with baseline comparisons
+    - per-case diffs for all major ablations
+    - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
+  - done-gate summary paths now produced directly in `reports/eval_matrix.json`:
+    - `summary.tool_first.pass_rate_delta_vs_baseline`
+    - `summary.swarm.pass_rate_delta_vs_baseline`
+    - `summary.dual_gated.pass_rate_delta_vs_baseline`
 
-### 1) Tests
-pytest -q
+- PR-6 is implemented:
+  - deterministic PR-6 memory regression tests:
+    - `tests/test_pr6_memory_regression.py`
+  - memory integration hardening:
+    - `src/moaa_prime/agents/base.py`
+    - `src/moaa_prime/agents/math_agent.py`
+    - `src/moaa_prime/agents/code_agent.py`
+    - `src/moaa_prime/memory/reasoning_bank.py`
+- PR-6 behavior:
+  - agent memory writes now persist canonical lane/task/text payloads.
+  - agent recall now reads both global bank recall and lane-local recall (`kl_like` aware).
+  - memory snippets are JSON-safe strings for stable report serialization.
+  - recall occurs before write in each handle path to avoid same-turn self-contamination.
+  - malformed positional dict writes are rejected instead of silently writing default/empty rows.
 
-### 2) CLI (quick)
-python -m moaa_prime "your prompt"
+- PR-7 is implemented:
+  - deterministic dashboard script:
+    - `scripts/dashboard.py`
+  - deterministic PR-7 smoke tests:
+    - `tests/test_pr7_dashboard_smoke.py`
+- PR-7 behavior:
+  - dashboard renders deterministic, human-readable sections for:
+    - artifact availability and status
+    - mode-level eval matrix deltas
+    - focused tool-first and dual-gate metrics
+    - router eval/train snippets
+    - failure taxonomy counters
+    - final report verdict
+  - dashboard tolerates missing or invalid report files without crashing and emits warnings.
+  - failure taxonomy classes are always emitted:
+    - `ROUTING_MISS`
+    - `TOOL_PARSE_FAIL`
+    - `TOOL_EXEC_FAIL`
+    - `FORMAT_FAIL`
+    - `MEMORY_DRIFT`
+    - `DUAL_REGRESSION`
+    - `SWARM_LOOP`
 
-### 3) Demo bundle (writes JSON artifacts)
-python scripts/demo_run.py
-# output: reports/demo_run.json
+- PR-8 is implemented:
+  - README runbook now includes full finish-gate commands through `scripts/eval_matrix.py`, router train/eval, and dashboard rendering.
+  - roadmap wording now explicitly includes case-sensitive done-gate token `Failure taxonomy`.
+  - docs remain aligned with runnable scripts and generated report artifacts.
 
-### 4) Bench (writes timing JSON)
-python scripts/bench_run.py
-# output: reports/bench.json
+- Mandatory upgrade implementation is now explicit:
+  - failure taxonomy + deterministic remediation plan module:
+    - `src/moaa_prime/eval/failure_taxonomy.py`
+    - tests: `tests/test_upgrade_failure_taxonomy.py`
+  - structured answer object normalization:
+    - `src/moaa_prime/schema/answer_object.py`
+    - package export: `src/moaa_prime/schema/__init__.py`
+    - additive runtime integration:
+      - `src/moaa_prime/core/app.py` (`run_once` and `run_swarm`)
+      - `src/moaa_prime/eval/runner.py` (eval outputs)
+    - tests: `tests/test_upgrade_answer_object.py`
 
----
+## Cycle 3 Truth (Learning Loop)
 
-## Real model wiring (Ollama) — optional
-Default = stub model (tests stay fast + deterministic).
+Execution modes:
+- `v1`: legacy `MetaRouter` + `OracleVerifier` + legacy swarm/GCEL
+- `v2`: `RouterV2` + `OracleV2` + Cycle 2 swarm/GCEL gating
+- `v3`: `RouterV3` + contract embeddings + Pareto swarm + trace-learning pipeline (includes budget-mode feature conditioning)
 
-Enable Ollama:
+Mode controls:
+- `MoAAPrime(mode="v1"|"v2"|"v3")`
+- env: `MOAA_AB_MODE=v1|v2|v3`
+
+Architecture docs:
+- `ARCHITECTURE_CYCLE2.md`
+- `ARCHITECTURE_CYCLE3.md`
+- `CONTRACTS.md`
+
+## Current CLI Truth
+
+Entrypoints:
+- `python -m moaa_prime`
+- `moaa-prime` (console script after install)
+
+Supported subcommands:
+- `hello`
+- `route <prompt>`
+- `swarm <prompt>`
+
+Shorthand behavior:
+- if first arg is not a known subcommand, it is treated as `route`
+
+## Setup
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install pytest pyyaml
+python -m pip install -e . --no-deps
+```
+
+## Required Runbook (Cycle 3)
+
+```bash
+.venv/bin/pytest -q
+.venv/bin/python scripts/demo_run.py
+.venv/bin/python scripts/bench_run.py
+.venv/bin/python scripts/eval_run.py
+.venv/bin/python scripts/eval_tool_first.py
+.venv/bin/python scripts/eval_compare.py
+.venv/bin/python scripts/eval_dual_gate.py
+.venv/bin/python scripts/eval_matrix.py
+.venv/bin/python scripts/train_router.py
+.venv/bin/python scripts/eval_router.py
+.venv/bin/python scripts/render_report.py
+.venv/bin/python scripts/dashboard.py
+```
+
+PR-0 compatibility smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr0_contract_compatibility.py
+```
+
+PR-3 intent trace smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr3_router_intent_trace.py
+```
+
+PR-5 eval matrix smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr5_eval_matrix_script.py
+```
+
+PR-6 memory regression smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr6_memory_regression.py
+```
+
+PR-7 dashboard smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr7_dashboard_smoke.py
+```
+
+## Nonstop Codex Swarm Runbook
+
+Start continuous swarm daemon:
+
+```bash
+./scripts/swarm_autopilot.sh start
+```
+
+Inspect current state:
+
+```bash
+./scripts/swarm_autopilot.sh status
+./scripts/swarm_autopilot.sh tail
+```
+
+Stop daemon:
+
+```bash
+./scripts/swarm_autopilot.sh stop
+```
+
+Autopilot artifacts:
+- `.codex/runs/autopilot/daemon.log`
+- `.codex/runs/autopilot/status.env`
+- `.codex/runs/autopilot/cycles.tsv`
+- `.codex/runs/autopilot/active_prompt.md`
+- `.codex/runs/autopilot/done_check.json`
+
+Done gate:
+- criteria file: `.codex/done_criteria.json`
+- evaluator script: `scripts/check_done.py`
+- behavior: each successful cycle evaluates done criteria; if met, status becomes `done` and daemon exits.
+- roadmap source-of-truth: `ROADMAP.md` (PR-0 through PR-8)
+- current done gate requires full handoff scope: PR-0..PR-8, full runbook commands, compatibility/memory tests, and mandatory upgrade artifacts (Tool-Verified Oracle, failure taxonomy, structured answer object, budgeted swarm checks, guardrailed router behavior, dashboard).
+- hardened final gate additionally enforces:
+  - RouterV3 non-regression vs V2 (`reports/eval_router.json`: routing + oracle deltas `>= 0`)
+  - dual-gate not always-on (`reports/dual_gated_eval.json`: `summary.dual_gated.trigger_rate < 1.0`)
+  - eval-matrix run schema non-null checks (`num_cases`, `scored_cases`, `passed`, `pass_rate`, `avg_oracle_score`, `avg_latency_proxy`)
+  - targeted code/math tool-verification non-regression checks
+
+Primary artifacts:
+- `reports/demo_run.json`
+- `reports/bench.json`
+- `reports/eval_report.json`
+- `reports/tool_first_eval.json`
+- `reports/eval_tool_first.json`
+- `reports/dual_gated_eval.json`
+- `reports/eval_matrix.json`
+- `reports/eval_compare.json`
+- `reports/router_train_report.json`
+- `reports/eval_router.json`
+- `reports/traces/run_<id>.json`
+- `datasets/router_training.jsonl`
+- `models/router_v3.pt`
+
+## Learning Pipeline
+
+Every swarm run appends a training example:
+- trace file: `reports/traces/run_<id>.json`
+- dataset append: `datasets/router_training.jsonl`
+
+Router training script:
+- `scripts/train_router.py`
+- reads traces + dataset and writes `models/router_v3.pt`
+- conditions learned expected-success features on normalized budget mode (`budget_mode_value`: `cheap=0.0`, `balanced=0.5`, `max_quality=1.0`, fallback `0.5`)
+- uses deterministic class-balanced weighting during logistic fitting
+- uses deterministic run-group (`run_id`) train/validation split for base logistic fitting with validation-NLL early stopping
+- restores the best validation-NLL base-model epoch deterministically
+- falls back to full-data base training when run-group validation cannot be formed
+- splits calibration data deterministically by `run_id` group into calibration-train/calibration-validation
+- requires both calibration splits to contain positive and negative labels; otherwise skips calibration and keeps baseline calibration
+- fits deterministic global post-logit calibration (`calibration_scale`, `calibration_bias`) on calibration-train using empirical (unweighted) prevalence
+- accepts global calibration only when it improves empirical (unweighted) validation NLL vs identity on calibration-validation
+- fits optional deterministic per-budget-mode calibration overrides (`calibration_by_budget_mode`) for `cheap|balanced|max_quality` on mode subsets
+- accepts each mode override only when mode-specific validation NLL improves vs global calibration; otherwise that mode falls back to global calibration
+- writes `reports/router_train_report.json` with:
+  - `training_accuracy`
+  - `training_brier_score`
+  - `training_ece`
+  - global calibration parameters
+  - accepted per-budget-mode calibration overrides (when present)
+
+Router evaluation script:
+- `scripts/eval_router.py`
+- compares `v2` vs `v3` with:
+  - `routing_accuracy`
+  - `oracle_score_gain`
+  - `latency_efficiency`
+  - `cost_efficiency`
+
+## Environment Variables
+
+LLM/provider wiring:
+- `MOAA_LLM_PROVIDER` (`stub` default; `ollama` supported)
+- `MOAA_OLLAMA_HOST` (`http://127.0.0.1:11434` default)
+- `MOAA_OLLAMA_MODEL` (`llama3.1:8b-instruct` default)
+
+Mode controls:
+- `MOAA_AB_MODE=v1|v2|v3`
+- `MOAA_DEMO_MODE=v1|v2|v3` (default script mode now `v3`)
+- `MOAA_BENCH_MODE=v1|v2|v3` (default script mode now `v3`)
+- `MOAA_EVAL_MODE=v1|v2|v3` (default script mode now `v3`)
+- `MOAA_DUAL_GATE=0|1` (optional default for dual-gated swarm selection)
+
+Router v3 / learning controls:
+- `MOAA_BUDGET_MODE=cheap|balanced|max_quality`
+- `MOAA_ROUTER_V3_MODEL` (default `models/router_v3.pt`)
+- `MOAA_TRACE_DIR` (default `reports/traces`)
+- `MOAA_ROUTER_DATASET` (default `datasets/router_training.jsonl`)
+- `MOAA_ROUTER_TRAIN_SEED`
+- `MOAA_ROUTER_EVAL_SEED`
+
+Optional seeds:
+- `MOAA_DEMO_SEED`
+- `MOAA_BENCH_SEED`
+- `MOAA_EVAL_SEED`
+- `MOAA_EVAL_COMPARE_SEED`
+
+Swarm autopilot controls:
+- `SWARM_AUTOPILOT_SLEEP_SECONDS`
+- `SWARM_AUTOPILOT_FULL_VALIDATE_EVERY`
+- `SWARM_AUTOPILOT_MAX_FAILURE_STREAK`
+- `SWARM_AUTOPILOT_VALIDATE_MODE=auto|quick|full|none`
+- `SWARM_AUTOPILOT_DAEMON_MODE=auto|tmux|nohup`
+- `SWARM_AUTOPILOT_TMUX_SESSION`
+- `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
+- `SWARM_AUTOPILOT_AUTOPUSH=0|1`
+- `SWARM_AUTOPILOT_DONE_CHECK_ENABLED=0|1`
+- `SWARM_AUTOPILOT_DONE_CHECK_SCRIPT`
+- `SWARM_AUTOPILOT_DONE_CRITERIA`
+- `SWARM_AUTOPILOT_DONE_REPORT`
+
+Ollama example:
+
+```bash
 export MOAA_LLM_PROVIDER=ollama
 export MOAA_OLLAMA_HOST="http://127.0.0.1:11434"
-export MOAA_OLLAMA_MODEL="llama3.1:8b-instruct-q4_K_M"
-
-Sanity check installed models:
-curl -s http://127.0.0.1:11434/api/tags | head
-
-Then run:
-python scripts/demo_run.py
-python scripts/bench_run.py
-
-Note:
-- If you pick the wrong model name, calls can fail.
-- Your working model (seen in /api/tags) is: llama3.1:8b-instruct-q4_K_M
-
----
-
-## Phases (truth status)
-
-### Phase 1 — Packaging + smoke ✅
-- src layout + minimal app + import smoke tests
-
-### Phase 2 — Agents + Contracts + Router ✅
-- Contract model
-- BaseAgent + MathAgent + CodeAgent
-- MetaRouter returns decision metadata
-
-### Phase 3 — Oracle ✅
-- Oracle verifier wired into outputs + tests
-
-### Phase 4 — Swarm ✅
-- SwarmManager multi-candidate path + tests
-
-### Phase 5 — Memory v1 ✅
-- Per-agent memory hooks + global ReasoningBank
-- Tests expect result.meta["memory"] includes:
-  - local_hits
-  - bank_hits
-
-### Phase 6 — E-MRE v1 ✅
-- AEDMC / SH-COS / GFO scaffolding + curiosity bump hooks (as implemented in memory layer)
-
-### Phase 7 — SGM + Energy Fusion v0 ✅
-- Shared geometric manifold + fusion scaffolding (v0)
-
-### Phase 8 — Consolidation ✅
-- Stabilized interfaces + tests as the system grew
-
-### Phase 9 — SFC ✅
-- Stability/budget coupling hooks (v0)
-
-### Phase 10 — Dual-brain ✅
-- Architect / Oracle split runner scaffolding (v0)
-
-### Phase 11 — GCEL ✅
-- Genetic Contract Evolution Loop (elite selection + mutation + crossover + clamping)
-
-### Phase 12 — Hard-polish demo + benchmarks ✅
-- Eval runner + JSON report writer
-- Demo script + bench script
-- Optional real model provider wiring (Ollama)
-- reports/ is generated output and should not be committed
-
----
-
-## Repo hygiene notes
-- reports/ is GENERATED. It should be gitignored.
-- Keep small phases: change → tests → commit.
-
+export MOAA_OLLAMA_MODEL="llama3.1:8b-instruct"
+```

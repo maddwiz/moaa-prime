@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Preserve memory metadata contracts used by tests.
+Keep ReasoningBank and E-MRE hooks backward compatible.
+"""

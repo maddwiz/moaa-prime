@@ -1,0 +1,5 @@
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Validate demo/bench/eval/report scripts end-to-end.
+Ensure generated artifacts are written under reports/.
+"""

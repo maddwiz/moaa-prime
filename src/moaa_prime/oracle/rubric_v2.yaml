@@ -1,0 +1,17 @@
+weights:
+  correctness_proxy: 0.34
+  coherence: 0.20
+  constraint_adherence: 0.18
+  safety_overreach: 0.16
+  grounding: 0.12
+
+consistency:
+  max_variance: 0.000001
+
+safety:
+  forbidden_terms:
+    - exploit
+    - malware
+    - payload
+    - credential dump
+    - ransomware
