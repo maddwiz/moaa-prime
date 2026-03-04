@@ -2,6 +2,32 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003J — PR-1 tool-first policy layer
+- Added PR-1 policy package:
+  - `src/moaa_prime/policy/tool_first.py`
+  - `src/moaa_prime/policy/__init__.py`
+- Implemented deterministic tool-first math policy:
+  - equation/expression extraction and SymPy-first solving/evaluation
+  - structured `MathToolOutcome` with extraction/error metadata
+- Implemented deterministic code verification + repair policy:
+  - Python extraction from fenced blocks/inline defs/prompt-as-source
+  - compile + restricted-exec verifier with structured `CodeVerification`
+  - bounded deterministic repair loop (`max_retries`) with rule-based fixes
+  - structured `CodeToolOutcome` metadata
+- Integrated PR-1 policy into agents:
+  - `MathAgent` now uses SymPy-first tool path and safe fallback while preserving memory contract keys
+  - `CodeAgent` now supports prompt-code verify/repair and natural-language proposal -> verify/repair flow with bounded retries
+- Added deterministic PR-1 tests:
+  - `tests/test_pr1_tool_first_policy.py`
+  - `tests/test_pr1_tool_first_eval_script.py`
+  - includes deterministic correctness-lift assertions vs non-tool baselines
+- Added deterministic PR-1 eval artifact script:
+  - `scripts/eval_tool_first.py` writing `reports/tool_first_eval.json`
+  - current deterministic report shows positive lift (`overall.pass_rate_delta = 0.6666666666666667`)
+- Updated continuity docs for PR-1:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003I — PR-0 contract freeze + compatibility assertions
 - Added `CONTRACTS.md` to freeze public contract surfaces for:
   - router output shape (`MoAAPrime.run_once(...).decision`)

@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0)
+## Roadmap Status (PR-0, PR-1)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -23,6 +23,16 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
   - required keys and required-key types are stable
   - additive fields are allowed
   - no silent contract removals/type changes
+
+- PR-1 is implemented:
+  - tool-first policy module: `src/moaa_prime/policy/tool_first.py`
+  - agent integration: `src/moaa_prime/agents/math_agent.py`, `src/moaa_prime/agents/code_agent.py`
+  - deterministic policy tests: `tests/test_pr1_tool_first_policy.py`
+  - deterministic eval artifact script: `scripts/eval_tool_first.py` -> `reports/tool_first_eval.json`
+- PR-1 behavior:
+  - `MathAgent` runs SymPy-first equation/expression solving, then falls back safely.
+  - `CodeAgent` runs deterministic verify/repair on prompt code when present.
+  - For natural language code prompts, `CodeAgent` does proposal -> verify/repair loop with bounded retries.
 
 ## Cycle 3 Truth (Learning Loop)
 
@@ -71,6 +81,7 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/demo_run.py
 .venv/bin/python scripts/bench_run.py
 .venv/bin/python scripts/eval_run.py
+.venv/bin/python scripts/eval_tool_first.py
 .venv/bin/python scripts/eval_compare.py
 .venv/bin/python scripts/train_router.py
 .venv/bin/python scripts/eval_router.py
@@ -121,6 +132,7 @@ Primary artifacts:
 - `reports/demo_run.json`
 - `reports/bench.json`
 - `reports/eval_report.json`
+- `reports/tool_first_eval.json`
 - `reports/eval_matrix.json`
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`

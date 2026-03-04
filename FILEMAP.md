@@ -32,6 +32,7 @@ This maps the repo so a new context window can re-sync quickly.
 ## Major Modules
 
 - `src/moaa_prime/contracts/contract.py`: contract priors + Cycle 3 semantic fields (`tags`, `description`, `embedding`)
+- `src/moaa_prime/policy/tool_first.py`: PR-1 tool-first math/code policy, code verifier, and bounded repair loop
 - `src/moaa_prime/router/meta_router.py`: v1 router
 - `src/moaa_prime/router/router_v2.py`: RouterV2 scoring + exploration
 - `src/moaa_prime/router/router_v3.py`: learned RouterV3 + budget profiles + model load/save
@@ -52,6 +53,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/demo_run.py`: deterministic demo run (default mode `v3`)
 - `scripts/bench_run.py`: benchmark run (default mode `v3`)
 - `scripts/eval_run.py`: eval report run (default mode `v3`)
+- `scripts/eval_tool_first.py`: deterministic PR-1 baseline vs tool-first correctness suite (`reports/tool_first_eval.json`)
 - `scripts/eval_compare.py`: v1-v2 compare report (`reports/eval_compare.json`)
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
@@ -65,6 +67,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `reports/demo_run.json`
 - `reports/bench.json`
 - `reports/eval_report.json`
+- `reports/tool_first_eval.json`
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`
@@ -79,6 +82,10 @@ Existing phase tests remain in `tests/test_phase*.py` plus CLI/import tests.
 
 Roadmap PR-0 compatibility tests:
 - `tests/test_pr0_contract_compatibility.py`
+
+Roadmap PR-1 tests:
+- `tests/test_pr1_tool_first_policy.py`
+- `tests/test_pr1_tool_first_eval_script.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`
