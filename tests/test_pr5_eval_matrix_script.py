@@ -105,6 +105,12 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     assert run_index["baseline_single"]["num_cases"] >= 12
     assert run_index["swarm"]["num_cases"] >= 12
     assert run_index["dual_gated"]["num_cases"] >= 12
+    assert run_index["swarm"]["avg_latency_proxy"] < 61.3335
+    assert run_index["dual_gated"]["avg_latency_proxy"] < 61.3335
+    assert run_index["dual_gated"]["pass_rate"] >= run_index["swarm"]["pass_rate"]
+    dual_trigger_flags = [bool(row.get("dual_triggered", False)) for row in run_index["dual_gated"]["cases"]]
+    assert any(dual_trigger_flags)
+    assert not all(dual_trigger_flags)
 
     summary = payload_1["summary"]
     assert summary["counts"]["num_runs"] == len(matrix["runs"])

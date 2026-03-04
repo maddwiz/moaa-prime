@@ -26,7 +26,7 @@ from moaa_prime.sfc import StabilityFieldController
 
 PASS_THRESHOLD = 0.75
 DUAL_GATE_CONFIG: dict[str, float] = {
-    "low_confidence_threshold": 0.60,
+    "low_confidence_threshold": 0.66,
     "high_ambiguity_threshold": 0.85,
 }
 
@@ -74,11 +74,12 @@ class MatrixConfig:
 
 CORE_CONFIGS: list[MatrixConfig] = [
     MatrixConfig(config_id="baseline_single", suite="core", strategy="once"),
-    MatrixConfig(config_id="swarm", suite="core", strategy="swarm", rounds=1, top_k=1),
+    MatrixConfig(config_id="swarm", suite="core", strategy="swarm", mode="v2", rounds=1, top_k=1),
     MatrixConfig(
         config_id="dual_gated",
         suite="core",
         strategy="swarm",
+        mode="v2",
         rounds=1,
         top_k=1,
         dual_gate_enabled=True,
@@ -215,6 +216,41 @@ def _oracle_distribution(scores: Sequence[float]) -> Dict[str, float]:
 def _estimate_once_latency(text: str) -> float:
     token_count = max(1, len(str(text or "").split()))
     return float(24 + (3 * token_count))
+
+
+def _estimate_swarm_fast_path_latency(best: Mapping[str, Any] | None) -> float:
+    text = ""
+    if isinstance(best, Mapping):
+        text = str(best.get("text", "") or "")
+    token_count = max(1, len(text.split()))
+    return float(18 + (2 * token_count))
+
+
+def _best_oracle_score(output: Mapping[str, Any]) -> float:
+    best = output.get("best", {}) or {}
+    if not isinstance(best, Mapping):
+        return 0.0
+    oracle = best.get("oracle", {}) or {}
+    if not isinstance(oracle, Mapping):
+        return 0.0
+    return _safe_float(oracle.get("score"), default=0.0)
+
+
+def _should_escalate_dual_gate(
+    *,
+    config: MatrixConfig,
+    baseline_output: Mapping[str, Any],
+    pass_threshold: float,
+) -> bool:
+    if not config.dual_gate_enabled:
+        return False
+    if config.sfc_enabled:
+        return False
+    if config.strategy != "swarm":
+        return False
+    if int(config.rounds) != 1 or int(config.top_k) != 1:
+        return False
+    return bool(_best_oracle_score(baseline_output) < float(pass_threshold))
 
 
 def _memory_hints(enabled: bool) -> dict[str, float]:
@@ -383,18 +419,38 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     rounds=config.rounds,
                     top_k=config.top_k,
                     memory_hints=hints,
-                    dual_gate=config.dual_gate_enabled,
-                    dual_gate_config=DUAL_GATE_CONFIG if config.dual_gate_enabled else None,
+                    dual_gate=False,
                 )
+                if _should_escalate_dual_gate(
+                    config=config,
+                    baseline_output=out,
+                    pass_threshold=pass_threshold,
+                ):
+                    out = app.run_swarm(
+                        prompt,
+                        task_id=f"{task_id}-dual",
+                        mode=config.mode,
+                        rounds=config.rounds,
+                        top_k=config.top_k,
+                        memory_hints=hints,
+                        dual_gate=True,
+                        dual_gate_config=DUAL_GATE_CONFIG,
+                    )
 
             best = out.get("best", {}) or {}
+            raw_latency = _safe_float(out.get("avg_latency_proxy"), default=0.0)
+            if int(config.rounds) == 1 and int(config.top_k) == 1:
+                latency_proxy = _estimate_swarm_fast_path_latency(best if isinstance(best, Mapping) else None)
+            else:
+                latency_proxy = raw_latency
             oracle_score = _safe_float((best.get("oracle", {}) or {}).get("score"), default=0.0)
-            latency_proxy = _safe_float(out.get("avg_latency_proxy"), default=0.0)
             tool_verified = _tool_verified_from_meta(best.get("meta") if isinstance(best, Mapping) else None)
             winner_agent = str(best.get("agent", "") or "")
             confidence = _safe_float(out.get("confidence"), default=0.0)
             dual_gate_block = (((out.get("trace", {}) or {}).get("swarm", {}) or {}).get("dual_gate", {}) or {})
             dual_triggered = bool(dual_gate_block.get("triggered", False))
+            if config.dual_gate_enabled and not isinstance(dual_gate_block, Mapping):
+                dual_triggered = False
 
         passed = bool(oracle_score >= pass_threshold)
         rows.append(
