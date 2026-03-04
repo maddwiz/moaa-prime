@@ -119,14 +119,17 @@ Router training script:
 - restores the best validation-NLL base-model epoch deterministically
 - falls back to full-data base training when run-group validation cannot be formed
 - splits calibration data deterministically by `run_id` group into calibration-train/calibration-validation
-- requires both calibration splits to contain positive and negative labels; otherwise skips calibration and keeps identity
-- fits deterministic post-logit calibration (`calibration_scale`, `calibration_bias`) on calibration-train using empirical (unweighted) prevalence
-- accepts calibration only when it improves empirical (unweighted) validation NLL vs identity on calibration-validation
+- requires both calibration splits to contain positive and negative labels; otherwise skips calibration and keeps baseline calibration
+- fits deterministic global post-logit calibration (`calibration_scale`, `calibration_bias`) on calibration-train using empirical (unweighted) prevalence
+- accepts global calibration only when it improves empirical (unweighted) validation NLL vs identity on calibration-validation
+- fits optional deterministic per-budget-mode calibration overrides (`calibration_by_budget_mode`) for `cheap|balanced|max_quality` on mode subsets
+- accepts each mode override only when mode-specific validation NLL improves vs global calibration; otherwise that mode falls back to global calibration
 - writes `reports/router_train_report.json` with:
   - `training_accuracy`
   - `training_brier_score`
   - `training_ece`
-  - calibration parameters
+  - global calibration parameters
+  - accepted per-budget-mode calibration overrides (when present)
 
 Router evaluation script:
 - `scripts/eval_router.py`

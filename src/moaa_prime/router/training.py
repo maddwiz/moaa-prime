@@ -11,7 +11,13 @@ from typing import Any, Dict, List, Mapping, Sequence
 from moaa_prime.contracts import Contract
 
 from .router_v2 import RoutingBudget
-from .router_v3 import FEATURE_NAMES, RouterV3Model, build_router_v3_features, save_router_v3_model
+from .router_v3 import (
+    CALIBRATION_BUDGET_MODES,
+    FEATURE_NAMES,
+    RouterV3Model,
+    build_router_v3_features,
+    save_router_v3_model,
+)
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -30,6 +36,13 @@ def _label_to_binary(label: float) -> float:
 def _stable_hash_int(value: str) -> int:
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
     return int(digest[:16], 16)
+
+
+def _normalized_budget_mode(mode: str | None) -> str:
+    raw = str(mode or "").strip().lower()
+    if raw in CALIBRATION_BUDGET_MODES:
+        return raw
+    return "balanced"
 
 
 @dataclass(frozen=True)
@@ -120,7 +133,7 @@ def records_to_examples(
         run_id = str(row.get("run_id", ""))
         prompt = str(row.get("task", ""))
         winner = str(row.get("winner", ""))
-        budget_mode = str(row.get("budget_mode", "balanced")) or "balanced"
+        budget_mode = _normalized_budget_mode(str(row.get("budget_mode", "balanced")) or "balanced")
 
         contract_map = row.get("contracts", {}) or {}
         if not isinstance(contract_map, Mapping):
@@ -290,8 +303,16 @@ def train_router_v3_model(
 
     calibration_scale = float(base.calibration_scale)
     calibration_bias = float(base.calibration_bias)
+    calibration_by_budget_mode: Dict[str, Dict[str, float]] = {}
     if fit_calibration:
         calibration_scale, calibration_bias = _fit_router_v3_calibration_with_gate(model, examples, seed=seed)
+        calibration_by_budget_mode = _fit_router_v3_budget_mode_calibration_overrides_with_gate(
+            model,
+            examples,
+            seed=seed,
+            global_calibration_scale=calibration_scale,
+            global_calibration_bias=calibration_bias,
+        )
 
     return RouterV3Model(
         feature_names=list(FEATURE_NAMES),
@@ -299,6 +320,7 @@ def train_router_v3_model(
         bias=bias,
         calibration_scale=calibration_scale,
         calibration_bias=calibration_bias,
+        calibration_by_budget_mode=calibration_by_budget_mode,
         seed=int(seed),
     )
 
@@ -433,14 +455,18 @@ def _fit_router_v3_calibration_with_gate(
     examples: Sequence[RouterTrainingExample],
     *,
     seed: int,
+    baseline_scale: float = 1.0,
+    baseline_bias: float = 0.0,
 ) -> tuple[float, float]:
+    baseline_scale = float(baseline_scale)
+    baseline_bias = float(baseline_bias)
     calibration_train, calibration_validation = _split_calibration_examples_by_run_group(examples, seed=seed)
     if not calibration_train or not calibration_validation:
-        return 1.0, 0.0
+        return baseline_scale, baseline_bias
     if not _has_binary_label_support(calibration_train) or not _has_binary_label_support(
         calibration_validation
     ):
-        return 1.0, 0.0
+        return baseline_scale, baseline_bias
 
     fitted_scale, fitted_bias = fit_router_v3_calibration(
         model,
@@ -448,11 +474,11 @@ def _fit_router_v3_calibration_with_gate(
         sample_weights=None,
     )
 
-    identity_nll = _evaluate_weighted_nll(
+    baseline_nll = _evaluate_weighted_nll(
         model,
         calibration_validation,
-        calibration_scale=1.0,
-        calibration_bias=0.0,
+        calibration_scale=baseline_scale,
+        calibration_bias=baseline_bias,
         sample_weights=None,
     )
     fitted_nll = _evaluate_weighted_nll(
@@ -463,9 +489,41 @@ def _fit_router_v3_calibration_with_gate(
         sample_weights=None,
     )
 
-    if fitted_nll + 1.0e-12 < identity_nll:
+    if fitted_nll + 1.0e-12 < baseline_nll:
         return float(fitted_scale), float(fitted_bias)
-    return 1.0, 0.0
+    return baseline_scale, baseline_bias
+
+
+def _fit_router_v3_budget_mode_calibration_overrides_with_gate(
+    model: RouterV3Model,
+    examples: Sequence[RouterTrainingExample],
+    *,
+    seed: int,
+    global_calibration_scale: float,
+    global_calibration_bias: float,
+) -> Dict[str, Dict[str, float]]:
+    global_calibration_scale = float(global_calibration_scale)
+    global_calibration_bias = float(global_calibration_bias)
+    out: Dict[str, Dict[str, float]] = {}
+    for mode in CALIBRATION_BUDGET_MODES:
+        mode_examples = [ex for ex in examples if _normalized_budget_mode(ex.budget_mode) == mode]
+        if not mode_examples:
+            continue
+        mode_seed = _stable_hash_int(f"{int(seed)}|router_v3_mode_calibration|{mode}")
+        mode_scale, mode_bias = _fit_router_v3_calibration_with_gate(
+            model,
+            mode_examples,
+            seed=mode_seed,
+            baseline_scale=global_calibration_scale,
+            baseline_bias=global_calibration_bias,
+        )
+        if (
+            abs(float(mode_scale) - global_calibration_scale) <= 1.0e-12
+            and abs(float(mode_bias) - global_calibration_bias) <= 1.0e-12
+        ):
+            continue
+        out[mode] = {"scale": float(mode_scale), "bias": float(mode_bias)}
+    return out
 
 
 def fit_router_v3_calibration(
@@ -514,7 +572,7 @@ def evaluate_training_accuracy(model: RouterV3Model, examples: Sequence[RouterTr
 
     correct = 0
     for ex in examples:
-        p = model.predict_expected_success(ex.features)
+        p = model.predict_expected_success(ex.features, budget_mode=ex.budget_mode)
         y = _label_to_binary(ex.label)
         yhat = 1.0 if p >= 0.5 else 0.0
         if yhat == y:
@@ -528,7 +586,7 @@ def evaluate_brier_score(model: RouterV3Model, examples: Sequence[RouterTraining
 
     err = 0.0
     for ex in examples:
-        p = _clamp(float(model.predict_expected_success(ex.features)), 0.0, 1.0)
+        p = _clamp(float(model.predict_expected_success(ex.features, budget_mode=ex.budget_mode)), 0.0, 1.0)
         y = _label_to_binary(ex.label)
         delta = p - y
         err += delta * delta
@@ -547,7 +605,7 @@ def evaluate_expected_calibration_error(
     bins = max(1, int(num_bins))
     stats: List[Dict[str, float]] = [{"count": 0.0, "sum_conf": 0.0, "sum_acc": 0.0} for _ in range(bins)]
     for ex in examples:
-        conf = _clamp(float(model.predict_expected_success(ex.features)), 0.0, 1.0)
+        conf = _clamp(float(model.predict_expected_success(ex.features, budget_mode=ex.budget_mode)), 0.0, 1.0)
         acc = _label_to_binary(ex.label)
         idx = min(bins - 1, int(conf * bins))
         row = stats[idx]
@@ -592,6 +650,14 @@ def train_and_save_router_v3(
         "training_ece": train_ece,
         "calibration_scale": float(model.calibration_scale),
         "calibration_bias": float(model.calibration_bias),
+        "calibration_by_budget_mode": {
+            mode: {
+                "scale": float(model.calibration_by_budget_mode[mode]["scale"]),
+                "bias": float(model.calibration_by_budget_mode[mode]["bias"]),
+            }
+            for mode in CALIBRATION_BUDGET_MODES
+            if mode in model.calibration_by_budget_mode
+        },
         "feature_names": list(FEATURE_NAMES),
         "weights": {k: float(model.weights.get(k, 0.0)) for k in FEATURE_NAMES},
         "bias": float(model.bias),
@@ -603,5 +669,13 @@ def train_and_save_router_v3(
         "calibration": {
             "scale": float(model.calibration_scale),
             "bias": float(model.calibration_bias),
+            "by_budget_mode": {
+                mode: {
+                    "scale": float(model.calibration_by_budget_mode[mode]["scale"]),
+                    "bias": float(model.calibration_by_budget_mode[mode]["bias"]),
+                }
+                for mode in CALIBRATION_BUDGET_MODES
+                if mode in model.calibration_by_budget_mode
+            },
         },
     }

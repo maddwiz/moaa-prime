@@ -149,6 +149,34 @@ def _imbalanced_constant_feature_examples():
     return examples
 
 
+def _examples_with_all_budget_modes():
+    examples = []
+    for mode in ["cheap", "balanced", "max_quality"]:
+        for run_idx in range(2):
+            run_id = f"{mode}-r{run_idx:02d}"
+            examples.append(
+                RouterTrainingExample(
+                    run_id=run_id,
+                    prompt=f"prompt-{run_id}",
+                    agent_name="neg",
+                    budget_mode=mode,
+                    features={"similarity": 0.0},
+                    label=0.0,
+                )
+            )
+            examples.append(
+                RouterTrainingExample(
+                    run_id=run_id,
+                    prompt=f"prompt-{run_id}",
+                    agent_name="pos",
+                    budget_mode=mode,
+                    features={"similarity": 1.0},
+                    label=1.0,
+                )
+            )
+    return examples
+
+
 def test_router_training_is_deterministic_for_seed():
     examples = records_to_examples(_records(), seed=13)
 
@@ -205,6 +233,52 @@ def test_router_training_supports_deterministic_calibration_toggle():
     )
     assert model_calibrated.calibration_scale == calibrated_repeat.calibration_scale
     assert model_calibrated.calibration_bias == calibrated_repeat.calibration_bias
+
+
+def test_router_training_mode_specific_calibration_is_deterministic(monkeypatch):
+    examples = _examples_with_all_budget_modes()
+
+    def _fake_gate(_model, exs, *, seed, baseline_scale=1.0, baseline_bias=0.0):
+        modes = sorted({str(ex.budget_mode) for ex in exs})
+        if len(modes) != 1:
+            return 1.2, -0.1
+        mode = modes[0]
+        by_mode = {
+            "cheap": (0.9, -0.4),
+            "balanced": (1.0, 0.2),
+            "max_quality": (1.35, 0.45),
+        }
+        return by_mode[mode]
+
+    monkeypatch.setattr("moaa_prime.router.training._fit_router_v3_calibration_with_gate", _fake_gate)
+    model_a = train_router_v3_model(examples, seed=29, epochs=25, fit_calibration=True)
+    model_b = train_router_v3_model(examples, seed=29, epochs=25, fit_calibration=True)
+
+    assert model_a.calibration_scale == model_b.calibration_scale
+    assert model_a.calibration_bias == model_b.calibration_bias
+    assert model_a.calibration_by_budget_mode == model_b.calibration_by_budget_mode
+    assert model_a.calibration_by_budget_mode == {
+        "cheap": {"scale": 0.9, "bias": -0.4},
+        "balanced": {"scale": 1.0, "bias": 0.2},
+        "max_quality": {"scale": 1.35, "bias": 0.45},
+    }
+
+
+def test_router_training_mode_specific_calibration_falls_back_to_global_when_not_accepted(monkeypatch):
+    examples = _examples_with_all_budget_modes()
+
+    def _fake_gate(_model, exs, *, seed, baseline_scale=1.0, baseline_bias=0.0):
+        modes = sorted({str(ex.budget_mode) for ex in exs})
+        if len(modes) != 1:
+            return 1.2, -0.1
+        return baseline_scale, baseline_bias
+
+    monkeypatch.setattr("moaa_prime.router.training._fit_router_v3_calibration_with_gate", _fake_gate)
+    model = train_router_v3_model(examples, seed=29, epochs=25, fit_calibration=True)
+
+    assert model.calibration_scale == 1.2
+    assert model.calibration_bias == -0.1
+    assert model.calibration_by_budget_mode == {}
 
 
 def test_router_training_calibration_split_is_run_group_deterministic():

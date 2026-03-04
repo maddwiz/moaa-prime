@@ -2,6 +2,21 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003G — RouterV3 budget-mode calibration override increment
+- Improved RouterV3 calibration quality in `src/moaa_prime/router/router_v3.py` and `src/moaa_prime/router/training.py`:
+  - added optional `calibration_by_budget_mode` overrides (`cheap`, `balanced`, `max_quality`) with deterministic fallback to global calibration (`calibration_scale`, `calibration_bias`)
+  - routing now applies expected-success calibration using the chosen budget mode
+  - training now fits/gates optional per-mode calibration overrides against mode-specific subsets and accepts each override only when validation NLL improves vs the global calibration
+- Preserved backward compatibility for legacy model payloads:
+  - existing model files without per-mode calibration still load deterministically with global calibration defaults
+- Expanded Cycle 3 test coverage in:
+  - `tests/test_cycle3_router_v3.py`
+  - `tests/test_cycle3_router_training.py`
+  - adds roundtrip, inference, deterministic-training, and fallback tests for mode-specific calibration
+- Updated continuity docs to match current RouterV3 calibration behavior:
+  - `MASTER_HANDOFF.md`
+  - `ARCHITECTURE_CYCLE3.md`
+
 ## Cycle 003F — Autopilot done-gate + GitHub sync reliability
 - Added machine-checkable done criteria file: `.codex/done_criteria.json`.
 - Added done evaluator script: `scripts/check_done.py`.

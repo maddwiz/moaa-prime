@@ -46,8 +46,10 @@ Model:
 - loaded from `models/router_v3.pt` when present
 - fallback to stable default weights when model file is missing
 - expected-success logits can be conditioned on normalized budget mode via `budget_mode_value`
-- post-logit calibration (`calibration_scale`, `calibration_bias`) is applied deterministically
-- calibration parameters are persisted in `models/router_v3.pt`
+- post-logit calibration is applied deterministically with:
+  - global calibration (`calibration_scale`, `calibration_bias`)
+  - optional per-budget-mode overrides (`calibration_by_budget_mode[mode] -> {scale,bias}`) for `cheap|balanced|max_quality`
+- calibration parameters (global + optional per-mode overrides) are persisted in `models/router_v3.pt`
 
 Budget weighting:
 - `cheap`: prioritize cost/latency more
@@ -118,16 +120,19 @@ Workflow:
 4. train deterministic logistic model with seed and class-balanced sample weighting
 5. apply deterministic validation-NLL early stopping for base training and restore best epoch parameters
 6. if run-group validation cannot be formed (for example a single `run_id`), train on all examples without early stopping
-7. split examples deterministically by `run_id` group for calibration train/validation
-8. require binary label support (both positive and negative labels) in calibration-train and calibration-validation; otherwise skip calibration
-9. fit deterministic post-logit calibration parameters on calibration-train split with empirical (unweighted) prevalence
-10. keep calibration only when empirical (unweighted) validation NLL improves vs identity (`scale=1`, `bias=0`)
-11. save model to `models/router_v3.pt`
-12. write report `reports/router_train_report.json` including:
+7. split examples deterministically by `run_id` group for global calibration train/validation
+8. require binary label support (both positive and negative labels) in calibration-train and calibration-validation; otherwise keep baseline calibration
+9. fit deterministic global post-logit calibration parameters on calibration-train split with empirical (unweighted) prevalence
+10. keep global calibration only when empirical (unweighted) validation NLL improves vs identity (`scale=1`, `bias=0`)
+11. for each budget mode (`cheap|balanced|max_quality`), fit an optional mode-specific calibration candidate on the mode subset with deterministic run-group splitting and binary-support checks
+12. keep each mode override only when mode-validation NLL improves vs global calibration; otherwise that mode falls back to global calibration
+13. save model to `models/router_v3.pt`
+14. write report `reports/router_train_report.json` including:
    - `training_accuracy`
    - `training_brier_score`
    - `training_ece`
-   - calibration parameters (`calibration_scale`, `calibration_bias`)
+   - global calibration (`calibration_scale`, `calibration_bias`)
+   - optional mode overrides (`calibration_by_budget_mode`, `calibration.by_budget_mode`)
 
 ## Router Eval Pipeline
 File:

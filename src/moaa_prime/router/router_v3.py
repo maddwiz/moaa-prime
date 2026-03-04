@@ -56,6 +56,16 @@ BUDGET_PROFILES: dict[str, dict[str, float]] = {
 }
 
 
+CALIBRATION_BUDGET_MODES: tuple[str, str, str] = ("cheap", "balanced", "max_quality")
+
+
+def _canonical_budget_mode(budget_mode: str | None) -> str | None:
+    mode = str(budget_mode or "").strip().lower()
+    if mode in BUDGET_PROFILES:
+        return mode
+    return None
+
+
 def _budget_mode_value(budget_mode: str | None) -> float:
     return {
         "cheap": 0.0,
@@ -95,6 +105,7 @@ class RouterV3Model:
     bias: float = -1.25
     calibration_scale: float = 1.0
     calibration_bias: float = 0.0
+    calibration_by_budget_mode: Dict[str, Dict[str, float]] = field(default_factory=dict)
     seed: int = 0
     version: str = "router_v3"
 
@@ -104,19 +115,53 @@ class RouterV3Model:
             z += float(self.weights.get(name, 0.0)) * float(features.get(name, 0.0))
         return z
 
-    def calibrate_logit(self, logit: float) -> float:
-        return (float(self.calibration_scale) * float(logit)) + float(self.calibration_bias)
+    def _normalized_calibration_by_budget_mode(self) -> Dict[str, Dict[str, float]]:
+        out: Dict[str, Dict[str, float]] = {}
+        raw = self.calibration_by_budget_mode
+        if not isinstance(raw, Mapping):
+            return out
+        for mode in CALIBRATION_BUDGET_MODES:
+            raw_entry = raw.get(mode)
+            if not isinstance(raw_entry, Mapping):
+                continue
+            try:
+                scale = float(raw_entry.get("scale", self.calibration_scale))
+                bias = float(raw_entry.get("bias", self.calibration_bias))
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(scale) or not math.isfinite(bias):
+                continue
+            out[mode] = {"scale": scale, "bias": bias}
+        return out
 
-    def predict_expected_success(self, features: Mapping[str, float]) -> float:
-        return _sigmoid(self.calibrate_logit(self.predict_logit(features)))
+    def calibration_parameters(self, budget_mode: str | None = None) -> tuple[float, float]:
+        scale = float(self.calibration_scale)
+        bias = float(self.calibration_bias)
+        mode = _canonical_budget_mode(budget_mode)
+        if mode is None:
+            return scale, bias
+        calibration_by_mode = self._normalized_calibration_by_budget_mode()
+        if mode in calibration_by_mode:
+            selected = calibration_by_mode[mode]
+            return float(selected["scale"]), float(selected["bias"])
+        return scale, bias
+
+    def calibrate_logit(self, logit: float, budget_mode: str | None = None) -> float:
+        scale, bias = self.calibration_parameters(budget_mode=budget_mode)
+        return (float(scale) * float(logit)) + float(bias)
+
+    def predict_expected_success(self, features: Mapping[str, float], budget_mode: str | None = None) -> float:
+        return _sigmoid(self.calibrate_logit(self.predict_logit(features), budget_mode=budget_mode))
 
     def to_dict(self) -> Dict[str, Any]:
+        calibration_by_budget_mode = self._normalized_calibration_by_budget_mode()
         return {
             "version": self.version,
             "seed": int(self.seed),
             "bias": float(self.bias),
             "calibration_scale": float(self.calibration_scale),
             "calibration_bias": float(self.calibration_bias),
+            "calibration_by_budget_mode": calibration_by_budget_mode,
             "feature_names": list(self.feature_names),
             "weights": {k: float(v) for k, v in self.weights.items()},
         }
@@ -132,12 +177,30 @@ class RouterV3Model:
         calibration_scale = 1.0
         calibration_bias = 0.0
         raw_calibration = data.get("calibration", {})
+        raw_mode_calibration: Mapping[str, Any] | Any = data.get("calibration_by_budget_mode", {})
         if isinstance(raw_calibration, Mapping):
             calibration_scale = float(raw_calibration.get("scale", data.get("calibration_scale", 1.0)))
             calibration_bias = float(raw_calibration.get("bias", data.get("calibration_bias", 0.0)))
+            if not isinstance(raw_mode_calibration, Mapping):
+                raw_mode_calibration = raw_calibration.get("by_budget_mode", {})
         else:
             calibration_scale = float(data.get("calibration_scale", 1.0))
             calibration_bias = float(data.get("calibration_bias", 0.0))
+
+        calibration_by_budget_mode: Dict[str, Dict[str, float]] = {}
+        if isinstance(raw_mode_calibration, Mapping):
+            for mode in CALIBRATION_BUDGET_MODES:
+                raw_entry = raw_mode_calibration.get(mode)
+                if not isinstance(raw_entry, Mapping):
+                    continue
+                try:
+                    scale = float(raw_entry.get("scale", calibration_scale))
+                    bias = float(raw_entry.get("bias", calibration_bias))
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(scale) or not math.isfinite(bias):
+                    continue
+                calibration_by_budget_mode[mode] = {"scale": scale, "bias": bias}
 
         return cls(
             feature_names=feature_names,
@@ -145,6 +208,7 @@ class RouterV3Model:
             bias=float(data.get("bias", -1.25)),
             calibration_scale=calibration_scale,
             calibration_bias=calibration_bias,
+            calibration_by_budget_mode=calibration_by_budget_mode,
             seed=int(data.get("seed", 0)),
             version=str(data.get("version", "router_v3")),
         )
@@ -290,8 +354,8 @@ class RouterV3:
 
     def _budget_mode(self, budget: RoutingBudget | Mapping[str, Any] | None) -> str:
         if isinstance(budget, Mapping):
-            mode = str(budget.get("mode", "") or "").strip().lower()
-            if mode in BUDGET_PROFILES:
+            mode = _canonical_budget_mode(budget.get("mode"))
+            if mode is not None:
                 return mode
         return self.default_budget_mode if self.default_budget_mode in BUDGET_PROFILES else "balanced"
 
@@ -347,9 +411,7 @@ class RouterV3:
 
         k = max(1, min(int(k), len(self.agents)))
         budget_obj = self._budget_obj(budget)
-        chosen_budget_mode = str(budget_mode or self._budget_mode(budget)).strip().lower()
-        if chosen_budget_mode not in BUDGET_PROFILES:
-            chosen_budget_mode = "balanced"
+        chosen_budget_mode = _canonical_budget_mode(budget_mode or self._budget_mode(budget)) or "balanced"
 
         scored: List[Tuple[float, str, BaseAgent, Dict[str, float], float]] = []
         for agent in self.agents:
@@ -368,7 +430,11 @@ class RouterV3:
                 embedding_dim=self.embedding_dim,
                 seed=self.seed,
             )
-            expected_success = _clamp(self.model.predict_expected_success(features), 0.0, 1.0)
+            expected_success = _clamp(
+                self.model.predict_expected_success(features, budget_mode=chosen_budget_mode),
+                0.0,
+                1.0,
+            )
             utility = _utility_from_expected_success(expected_success, features, chosen_budget_mode)
 
             scored.append((float(utility), agent_name, agent, features, expected_success))

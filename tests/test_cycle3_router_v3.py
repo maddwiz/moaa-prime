@@ -106,6 +106,36 @@ def test_router_v3_model_calibration_persists_roundtrip(tmp_path):
     assert loaded.predict_expected_success({"similarity": 0.5}) == model.predict_expected_success({"similarity": 0.5})
 
 
+def test_router_v3_model_budget_mode_calibration_persists_roundtrip(tmp_path):
+    path = tmp_path / "router_v3.pt"
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 1.75},
+        bias=-0.4,
+        calibration_scale=1.3,
+        calibration_bias=-0.2,
+        calibration_by_budget_mode={
+            "cheap": {"scale": 0.85, "bias": -0.5},
+            "max_quality": {"scale": 1.1, "bias": 0.35},
+        },
+        seed=8,
+    )
+    save_router_v3_model(path, model)
+
+    loaded = load_router_v3_model(path, seed=999)
+    assert loaded.calibration_scale == model.calibration_scale
+    assert loaded.calibration_bias == model.calibration_bias
+    assert loaded.calibration_by_budget_mode == model.calibration_by_budget_mode
+    assert loaded.predict_expected_success({"similarity": 0.5}, budget_mode="cheap") == model.predict_expected_success(
+        {"similarity": 0.5},
+        budget_mode="cheap",
+    )
+    assert loaded.predict_expected_success(
+        {"similarity": 0.5},
+        budget_mode="max_quality",
+    ) == model.predict_expected_success({"similarity": 0.5}, budget_mode="max_quality")
+
+
 def test_router_v3_model_legacy_payload_defaults_identity_calibration():
     model = RouterV3Model.from_dict(
         {
@@ -118,6 +148,57 @@ def test_router_v3_model_legacy_payload_defaults_identity_calibration():
     )
     assert model.calibration_scale == 1.0
     assert model.calibration_bias == 0.0
+    assert model.calibration_by_budget_mode == {}
+
+
+def test_router_v3_route_uses_budget_mode_specific_calibration():
+    agent = DummyAgent(
+        Contract(
+            name="solo-agent",
+            domains=["general"],
+            competence=0.8,
+            reliability=0.8,
+            cost_prior=0.2,
+            description="general helper",
+        )
+    )
+    router = RouterV3([agent], seed=11, model_path="/tmp/nonexistent-router-v3.pt")
+    router.model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.0,
+        calibration_by_budget_mode={
+            "cheap": {"scale": 1.0, "bias": -1.0},
+            "max_quality": {"scale": 1.0, "bias": 1.0},
+        },
+        seed=11,
+    )
+
+    _, cheap_decisions = router.route_top_k("route me", k=1, budget_mode="cheap")
+    _, max_quality_decisions = router.route_top_k("route me", k=1, budget_mode="max_quality")
+
+    cheap_expected_success = cheap_decisions[0].components["expected_success"]
+    max_quality_expected_success = max_quality_decisions[0].components["expected_success"]
+    assert abs(cheap_expected_success - (1.0 / (1.0 + math.exp(1.0)))) < 1.0e-12
+    assert abs(max_quality_expected_success - (1.0 / (1.0 + math.exp(-1.0)))) < 1.0e-12
+    assert cheap_expected_success < max_quality_expected_success
+
+
+def test_router_v3_model_budget_mode_calibration_falls_back_to_global():
+    model = RouterV3Model(
+        feature_names=["similarity"],
+        weights={"similarity": 0.0},
+        bias=0.0,
+        calibration_scale=1.0,
+        calibration_bias=0.3,
+        calibration_by_budget_mode={"cheap": {"scale": 1.0, "bias": -1.0}},
+        seed=5,
+    )
+    expected_global = 1.0 / (1.0 + math.exp(-0.3))
+    assert abs(model.predict_expected_success({"similarity": 0.2}, budget_mode="balanced") - expected_global) < 1.0e-12
+    assert abs(model.predict_expected_success({"similarity": 0.2}, budget_mode="unknown-mode") - expected_global) < 1.0e-12
 
 
 def test_router_v3_features_include_budget_mode_value_mapping():
