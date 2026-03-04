@@ -6,6 +6,7 @@ All notable changes to this repo, by phase.
 - Added nonstop swarm daemon script: `scripts/swarm_autopilot.sh`.
   - `start|stop|status|tail|once|run` controls.
   - Continuous loop with cycle state, heartbeat, summary TSV, and daemon logs.
+  - `tmux`-backed daemon mode for reliable long-running Codex swarm sessions.
   - Automatic fallback prompt switching after configurable failure streak.
   - Validation gating modes (`auto|quick|full|none`) and optional auto-commit/auto-push.
 - Added default continuous mission prompt: `.codex/prompts/autopilot.md`.

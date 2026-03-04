@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNS_DIR="$ROOT_DIR/.codex/runs"
 STATE_DIR="$RUNS_DIR/autopilot"
 PID_FILE="$STATE_DIR/autopilot.pid"
+MODE_FILE="$STATE_DIR/runner_mode.txt"
 STATUS_FILE="$STATE_DIR/status.env"
 HEARTBEAT_FILE="$STATE_DIR/heartbeat.txt"
 SUMMARY_FILE="$STATE_DIR/cycles.tsv"
@@ -24,6 +25,8 @@ AUTOPUSH="${SWARM_AUTOPILOT_AUTOPUSH:-0}"
 BRANCH_PREFIX="${SWARM_AUTOPILOT_BRANCH_PREFIX:-codex/}"
 VALIDATE_MODE="${SWARM_AUTOPILOT_VALIDATE_MODE:-auto}" # auto|quick|full|none
 SINGLE_CYCLE="${SWARM_AUTOPILOT_SINGLE_CYCLE:-0}"
+DAEMON_MODE="${SWARM_AUTOPILOT_DAEMON_MODE:-auto}" # auto|tmux|nohup
+TMUX_SESSION="${SWARM_AUTOPILOT_TMUX_SESSION:-moaa-prime-swarm-autopilot}"
 
 usage() {
   cat <<'EOF'
@@ -40,6 +43,8 @@ Environment:
   SWARM_AUTOPILOT_FULL_VALIDATE_EVERY=5
   SWARM_AUTOPILOT_MAX_FAILURE_STREAK=3
   SWARM_AUTOPILOT_VALIDATE_MODE=auto|quick|full|none
+  SWARM_AUTOPILOT_DAEMON_MODE=auto|tmux|nohup
+  SWARM_AUTOPILOT_TMUX_SESSION=moaa-prime-swarm-autopilot
   SWARM_AUTOPILOT_AUTOCOMMIT=0|1
   SWARM_AUTOPILOT_AUTOPUSH=0|1
   SWARM_AUTOPILOT_BRANCH_PREFIX=codex/
@@ -58,6 +63,17 @@ ensure_state_dir() {
 }
 
 is_running() {
+  local mode=""
+  if [[ -f "$MODE_FILE" ]]; then
+    mode="$(cat "$MODE_FILE" 2>/dev/null || true)"
+  fi
+
+  if [[ "$mode" == "tmux" ]] || [[ "$mode" == "auto" ]]; then
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
   if [[ ! -f "$PID_FILE" ]]; then
     return 1
   fi
@@ -73,6 +89,14 @@ is_running() {
   fi
 
   return 1
+}
+
+runner_mode() {
+  if [[ -f "$MODE_FILE" ]]; then
+    cat "$MODE_FILE"
+    return
+  fi
+  echo "unknown"
 }
 
 write_status() {
@@ -276,15 +300,17 @@ run_loop() {
     echo "[$started_at] Cycle $cycle starting (failure_streak=$failure_streak, prompt_source=$prompt_source)"
 
     swarm_exit=0
-    if ! "$SWARM_RUNNER" "$ACTIVE_PROMPT_FILE"; then
-      swarm_exit=$?
-    fi
+    set +e
+    "$SWARM_RUNNER" "$ACTIVE_PROMPT_FILE"
+    swarm_exit=$?
+    set -e
 
     validate_exit=0
     if [[ "$swarm_exit" -eq 0 ]]; then
-      if ! run_validation "$cycle"; then
-        validate_exit=$?
-      fi
+      set +e
+      run_validation "$cycle"
+      validate_exit=$?
+      set -e
     else
       validate_exit=99
     fi
@@ -330,6 +356,7 @@ run_loop() {
 start_daemon() {
   local base_prompt="${1:-$DEFAULT_BASE_PROMPT}"
   local fallback_prompt="${2:-$DEFAULT_FALLBACK_PROMPT}"
+  local mode="$DAEMON_MODE"
 
   ensure_state_dir
   guard_branch_prefix
@@ -340,25 +367,73 @@ start_daemon() {
   fi
 
   if is_running; then
-    echo "Autopilot already running (pid $(cat "$PID_FILE"))."
+    if [[ "$(runner_mode)" == "tmux" ]]; then
+      echo "Autopilot already running in tmux session '$TMUX_SESSION'."
+    else
+      echo "Autopilot already running (pid $(cat "$PID_FILE"))."
+    fi
     exit 0
   fi
 
-  rm -f "$STOP_REQUEST_FILE"
-  nohup "$0" run "$base_prompt" "$fallback_prompt" >> "$DAEMON_LOG" 2>&1 &
-  local pid=$!
-  echo "$pid" > "$PID_FILE"
+  if [[ "$mode" == "auto" ]]; then
+    if command -v tmux >/dev/null 2>&1; then
+      mode="tmux"
+    else
+      mode="nohup"
+    fi
+  fi
 
-  echo "Autopilot started."
-  echo "PID: $pid"
-  echo "Daemon log: $DAEMON_LOG"
+  rm -f "$STOP_REQUEST_FILE"
+
+  case "$mode" in
+    tmux)
+      if ! command -v tmux >/dev/null 2>&1; then
+        echo "tmux is not installed; cannot use SWARM_AUTOPILOT_DAEMON_MODE=tmux." >&2
+        exit 1
+      fi
+
+      local tmux_cmd
+      tmux_cmd="$(printf "cd %q && %q run %q %q >> %q 2>&1" "$ROOT_DIR" "$0" "$base_prompt" "$fallback_prompt" "$DAEMON_LOG")"
+      tmux new-session -d -s "$TMUX_SESSION" "$tmux_cmd"
+      echo "tmux" > "$MODE_FILE"
+      rm -f "$PID_FILE"
+      echo "Autopilot started in tmux."
+      echo "Session: $TMUX_SESSION"
+      echo "Daemon log: $DAEMON_LOG"
+      ;;
+    nohup)
+      nohup "$0" run "$base_prompt" "$fallback_prompt" >> "$DAEMON_LOG" 2>&1 &
+      local pid=$!
+      echo "$pid" > "$PID_FILE"
+      echo "nohup" > "$MODE_FILE"
+      echo "Autopilot started."
+      echo "PID: $pid"
+      echo "Daemon log: $DAEMON_LOG"
+      ;;
+    *)
+      echo "Unsupported SWARM_AUTOPILOT_DAEMON_MODE: $mode" >&2
+      exit 1
+      ;;
+  esac
 }
 
 stop_daemon() {
   ensure_state_dir
 
+  local mode
+  mode="$(runner_mode)"
+
+  if [[ "$mode" == "tmux" ]] && command -v tmux >/dev/null 2>&1; then
+    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+      tmux kill-session -t "$TMUX_SESSION"
+      rm -f "$PID_FILE" "$MODE_FILE" "$STOP_REQUEST_FILE"
+      echo "Autopilot stopped (tmux session '$TMUX_SESSION')."
+      return
+    fi
+  fi
+
   if ! is_running; then
-    rm -f "$PID_FILE"
+    rm -f "$PID_FILE" "$MODE_FILE"
     echo "Autopilot is not running."
     exit 0
   fi
@@ -379,7 +454,7 @@ stop_daemon() {
     kill -9 "$pid" >/dev/null 2>&1 || true
   fi
 
-  rm -f "$PID_FILE" "$STOP_REQUEST_FILE"
+  rm -f "$PID_FILE" "$MODE_FILE" "$STOP_REQUEST_FILE"
   echo "Autopilot stopped."
 }
 
@@ -388,9 +463,17 @@ show_status() {
 
   if is_running; then
     echo "status=running"
-    echo "pid=$(cat "$PID_FILE")"
+    echo "runner_mode=$(runner_mode)"
+    if [[ "$(runner_mode)" == "tmux" ]]; then
+      echo "tmux_session=$TMUX_SESSION"
+    elif [[ -f "$PID_FILE" ]]; then
+      echo "pid=$(cat "$PID_FILE")"
+    fi
   else
     echo "status=stopped"
+    if [[ -f "$MODE_FILE" ]]; then
+      echo "runner_mode=$(runner_mode)"
+    fi
   fi
 
   if [[ -f "$HEARTBEAT_FILE" ]]; then

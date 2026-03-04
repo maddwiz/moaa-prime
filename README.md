@@ -128,5 +128,7 @@ Useful environment controls:
 - `SWARM_AUTOPILOT_VALIDATE_MODE=auto|quick|full|none`
 - `SWARM_AUTOPILOT_FULL_VALIDATE_EVERY=5`
 - `SWARM_AUTOPILOT_MAX_FAILURE_STREAK=3` (fallback prompt trigger)
+- `SWARM_AUTOPILOT_DAEMON_MODE=auto|tmux|nohup` (`auto` prefers `tmux`)
+- `SWARM_AUTOPILOT_TMUX_SESSION=moaa-prime-swarm-autopilot`
 - `SWARM_AUTOPILOT_AUTOCOMMIT=0|1`
 - `SWARM_AUTOPILOT_AUTOPUSH=0|1`
