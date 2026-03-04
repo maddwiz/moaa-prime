@@ -112,12 +112,15 @@ Files:
 Workflow:
 1. load traces + dataset rows
 2. extract per-agent training examples
-3. train deterministic logistic model with seed and class-balanced sample weighting
-4. split examples deterministically by `run_id` group for calibration train/validation
-5. fit deterministic post-logit calibration parameters on calibration-train split
-6. keep calibration only when validation weighted NLL improves vs identity (`scale=1`, `bias=0`)
-7. save model to `models/router_v3.pt`
-8. write report `reports/router_train_report.json` including:
+3. split examples deterministically by `run_id` group for base-training train/validation
+4. train deterministic logistic model with seed and class-balanced sample weighting
+5. apply deterministic validation-NLL early stopping for base training and restore best epoch parameters
+6. if run-group validation cannot be formed (for example a single `run_id`), train on all examples without early stopping
+7. split examples deterministically by `run_id` group for calibration train/validation
+8. fit deterministic post-logit calibration parameters on calibration-train split
+9. keep calibration only when validation weighted NLL improves vs identity (`scale=1`, `bias=0`)
+10. save model to `models/router_v3.pt`
+11. write report `reports/router_train_report.json` including:
    - `training_accuracy`
    - `training_brier_score`
    - `training_ece`

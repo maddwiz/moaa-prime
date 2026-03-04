@@ -13,6 +13,10 @@ All notable changes to this repo, by phase.
   - fit calibration on calibration-train run groups
   - keep fitted calibration only when weighted validation NLL improves versus identity calibration
   - fallback to identity calibration when no improvement is observed
+- Strengthened base logistic fitting in `src/moaa_prime/router/training.py` with deterministic run-group (`run_id`) validation early stopping:
+  - deterministic base-train/base-validation split by run group to prevent same-run leakage
+  - deterministic restore of best validation-NLL epoch parameters
+  - fallback to full-data training when no run-group validation split is possible
 - Added training calibration/quality metrics:
   - Brier score (`training_brier_score`)
   - Expected Calibration Error (`training_ece`)

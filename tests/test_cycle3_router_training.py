@@ -5,6 +5,7 @@ from moaa_prime.router.training import (
     RouterTrainingExample,
     _fit_router_v3_calibration_with_gate,
     _split_calibration_examples_by_run_group,
+    _split_training_examples_by_run_group,
     evaluate_brier_score,
     evaluate_expected_calibration_error,
     records_to_examples,
@@ -97,8 +98,24 @@ def _positive_calibration_examples():
 def test_router_training_is_deterministic_for_seed():
     examples = records_to_examples(_records(), seed=13)
 
-    model_a = train_router_v3_model(examples, seed=13, epochs=120)
-    model_b = train_router_v3_model(examples, seed=13, epochs=120)
+    model_a = train_router_v3_model(
+        examples,
+        seed=13,
+        epochs=120,
+        early_stopping=True,
+        early_stopping_patience=2,
+        early_stopping_min_epochs=3,
+        early_stopping_min_delta=1.0,
+    )
+    model_b = train_router_v3_model(
+        examples,
+        seed=13,
+        epochs=120,
+        early_stopping=True,
+        early_stopping_patience=2,
+        early_stopping_min_epochs=3,
+        early_stopping_min_delta=1.0,
+    )
 
     assert model_a.bias == model_b.bias
     assert model_a.weights == model_b.weights
@@ -138,6 +155,38 @@ def test_router_training_calibration_split_is_run_group_deterministic():
     val_runs = {ex.run_id for ex in val_a}
     assert train_runs.isdisjoint(val_runs)
     assert train_runs | val_runs == {ex.run_id for ex in examples}
+
+
+def test_router_training_split_is_run_group_deterministic():
+    examples = records_to_examples(_records(), seed=7)
+
+    train_a, val_a = _split_training_examples_by_run_group(examples, seed=29)
+    train_b, val_b = _split_training_examples_by_run_group(examples, seed=29)
+
+    assert [(ex.run_id, ex.agent_name) for ex in train_a] == [(ex.run_id, ex.agent_name) for ex in train_b]
+    assert [(ex.run_id, ex.agent_name) for ex in val_a] == [(ex.run_id, ex.agent_name) for ex in val_b]
+
+    train_runs = {ex.run_id for ex in train_a}
+    val_runs = {ex.run_id for ex in val_a}
+    assert train_runs.isdisjoint(val_runs)
+    assert train_runs | val_runs == {ex.run_id for ex in examples}
+
+
+def test_router_training_handles_no_validation_split_available():
+    examples = records_to_examples([_records()[0]], seed=11)
+
+    model = train_router_v3_model(
+        examples,
+        seed=11,
+        epochs=80,
+        early_stopping=True,
+        early_stopping_patience=2,
+        early_stopping_min_epochs=3,
+    )
+
+    assert isinstance(model, RouterV3Model)
+    assert math.isfinite(model.bias)
+    assert set(model.weights.keys()) == set(model.feature_names)
 
 
 def test_router_training_calibration_gate_accepts_when_validation_nll_improves(monkeypatch):

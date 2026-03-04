@@ -184,6 +184,11 @@ def train_router_v3_model(
     learning_rate: float = 0.18,
     l2: float = 1.0e-4,
     fit_calibration: bool = True,
+    early_stopping: bool = True,
+    early_stopping_validation_fraction: float = 0.25,
+    early_stopping_patience: int = 16,
+    early_stopping_min_epochs: int = 20,
+    early_stopping_min_delta: float = 1.0e-8,
 ) -> RouterV3Model:
     rng = random.Random(int(seed))
 
@@ -205,10 +210,34 @@ def train_router_v3_model(
             seed=int(seed),
         )
 
-    sample_weights = _build_class_balanced_sample_weights(examples)
+    training_examples = list(examples)
+    validation_examples: List[RouterTrainingExample] = []
+    if early_stopping:
+        training_examples, validation_examples = _split_training_examples_by_run_group(
+            examples,
+            seed=seed,
+            validation_fraction=early_stopping_validation_fraction,
+        )
+        if not training_examples:
+            training_examples = list(examples)
+            validation_examples = []
 
-    for _ in range(max(1, int(epochs))):
-        for idx, ex in enumerate(examples):
+    sample_weights = _build_class_balanced_sample_weights(training_examples)
+    validation_weights = _build_class_balanced_sample_weights(validation_examples)
+
+    num_epochs = max(1, int(epochs))
+    patience = max(1, int(early_stopping_patience))
+    min_epochs = max(1, int(early_stopping_min_epochs))
+    min_delta = max(0.0, float(early_stopping_min_delta))
+    use_early_stopping = bool(early_stopping and validation_examples)
+
+    best_weights = {k: float(weights.get(k, 0.0)) for k in FEATURE_NAMES}
+    best_bias = float(bias)
+    best_validation_nll = math.inf
+    epochs_without_improvement = 0
+
+    for epoch_idx in range(num_epochs):
+        for idx, ex in enumerate(training_examples):
             z = bias
             for k in FEATURE_NAMES:
                 z += weights[k] * float(ex.features.get(k, 0.0))
@@ -220,6 +249,36 @@ def train_router_v3_model(
                 grad = (err * x) + (l2 * weights[k])
                 weights[k] -= float(learning_rate) * grad
             bias -= float(learning_rate) * err
+
+        if not use_early_stopping:
+            continue
+
+        candidate_model = RouterV3Model(
+            feature_names=list(FEATURE_NAMES),
+            weights=weights,
+            bias=bias,
+            seed=int(seed),
+        )
+        validation_nll = _evaluate_weighted_nll(
+            candidate_model,
+            validation_examples,
+            calibration_scale=1.0,
+            calibration_bias=0.0,
+            sample_weights=validation_weights,
+        )
+        if math.isfinite(validation_nll) and (validation_nll + min_delta < best_validation_nll):
+            best_validation_nll = float(validation_nll)
+            best_weights = {k: float(weights.get(k, 0.0)) for k in FEATURE_NAMES}
+            best_bias = float(bias)
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if (epoch_idx + 1) >= min_epochs and epochs_without_improvement >= patience:
+                break
+
+    if use_early_stopping and math.isfinite(best_validation_nll):
+        weights = {k: float(best_weights.get(k, 0.0)) for k in FEATURE_NAMES}
+        bias = float(best_bias)
 
     model = RouterV3Model(
         feature_names=list(FEATURE_NAMES),
@@ -258,11 +317,12 @@ def _build_class_balanced_sample_weights(examples: Sequence[RouterTrainingExampl
     return [pos_weight if _label_to_binary(ex.label) >= 0.5 else neg_weight for ex in examples]
 
 
-def _split_calibration_examples_by_run_group(
+def _split_examples_by_run_group(
     examples: Sequence[RouterTrainingExample],
     *,
     seed: int,
-    validation_fraction: float = 0.25,
+    validation_fraction: float,
+    max_validation_fraction: float = 0.5,
 ) -> tuple[List[RouterTrainingExample], List[RouterTrainingExample]]:
     if not examples:
         return [], []
@@ -276,22 +336,50 @@ def _split_calibration_examples_by_run_group(
     if len(run_ids) < 2:
         return list(examples), []
 
-    raw_fraction = _clamp(float(validation_fraction), 0.0, 0.5)
+    raw_fraction = _clamp(float(validation_fraction), 0.0, float(max_validation_fraction))
     num_validation_runs = int(round(float(len(run_ids)) * raw_fraction))
     num_validation_runs = max(1, min(len(run_ids) - 1, num_validation_runs))
 
     ranked_runs = sorted(run_ids, key=lambda run_id: (_stable_hash_int(f"{int(seed)}|{run_id}"), run_id))
     validation_runs = set(ranked_runs[:num_validation_runs])
 
-    calibration_train: List[RouterTrainingExample] = []
-    calibration_validation: List[RouterTrainingExample] = []
+    train_examples: List[RouterTrainingExample] = []
+    validation_examples: List[RouterTrainingExample] = []
     for idx, ex in enumerate(examples):
         run_key = str(ex.run_id).strip() or f"anon_{idx:06d}"
         if run_key in validation_runs:
-            calibration_validation.append(ex)
+            validation_examples.append(ex)
         else:
-            calibration_train.append(ex)
+            train_examples.append(ex)
+    return train_examples, validation_examples
 
+
+def _split_training_examples_by_run_group(
+    examples: Sequence[RouterTrainingExample],
+    *,
+    seed: int,
+    validation_fraction: float = 0.25,
+) -> tuple[List[RouterTrainingExample], List[RouterTrainingExample]]:
+    return _split_examples_by_run_group(
+        examples,
+        seed=seed,
+        validation_fraction=validation_fraction,
+        max_validation_fraction=0.5,
+    )
+
+
+def _split_calibration_examples_by_run_group(
+    examples: Sequence[RouterTrainingExample],
+    *,
+    seed: int,
+    validation_fraction: float = 0.25,
+) -> tuple[List[RouterTrainingExample], List[RouterTrainingExample]]:
+    calibration_train, calibration_validation = _split_examples_by_run_group(
+        examples,
+        seed=seed,
+        validation_fraction=validation_fraction,
+        max_validation_fraction=0.5,
+    )
     return calibration_train, calibration_validation
 
 
