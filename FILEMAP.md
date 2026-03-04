@@ -35,6 +35,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `src/moaa_prime/policy/tool_first.py`: PR-1 tool-first math/code policy, code verifier, and bounded repair loop
 - `src/moaa_prime/tools/code_sandbox.py`: PR-2 deterministic Python extraction + compile/exec sandbox with structured verification result
 - `src/moaa_prime/router/meta_router.py`: v1 router
+- `src/moaa_prime/router/intent.py`: PR-3 deterministic intent-first classifier and intent alignment helpers
 - `src/moaa_prime/router/router_v2.py`: RouterV2 scoring + exploration
 - `src/moaa_prime/router/router_v3.py`: learned RouterV3 + budget profiles + model load/save
 - `src/moaa_prime/router/training.py`: trace -> feature -> model training pipeline
@@ -90,6 +91,9 @@ Roadmap PR-1 tests:
 
 Roadmap PR-2 tests:
 - `tests/test_pr2_code_sandbox_verifier.py`
+
+Roadmap PR-3 tests:
+- `tests/test_pr3_router_intent_trace.py`
 
 Cycle 2 tests:
 - `tests/test_cycle2_router_v2.py`

@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1, PR-2)
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -43,6 +43,22 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
   - sandbox verify path includes compile-fail, exec-fail, and stdout-capture pass cases.
   - oracle confidence applies deterministic additive verifier deltas while preserving no-signal behavior.
   - code repair loop and `CodeAgent` metadata preserve verifier fields (`stage`, `error_type`, `line`, etc.).
+
+- PR-3 is implemented:
+  - deterministic intent-first rules: `src/moaa_prime/router/intent.py`
+  - router integration: `src/moaa_prime/router/router_v2.py`, `src/moaa_prime/router/router_v3.py`
+  - trace metadata integration: `src/moaa_prime/swarm/manager.py`, `src/moaa_prime/core/app.py`
+  - deterministic PR-3 tests: `tests/test_pr3_router_intent_trace.py`
+- PR-3 behavior:
+  - router intent classifier deterministically labels prompts as `math`, `code`, or `general`.
+  - routing decisions include additive intent metadata (`intent`, `matched_features`, `intent_scores`).
+  - swarm `trace.router` now emits additive PR-3 trace fields:
+    - `intent`
+    - `matched_features`
+    - `chosen_agent`
+    - `alternatives`
+    - `ranking_rationale`
+  - `run_once(...)` now emits additive `route_trace` for debug surfaces without changing required contract keys.
 
 ## Cycle 3 Truth (Learning Loop)
 
@@ -101,6 +117,12 @@ PR-0 compatibility smoke:
 
 ```bash
 .venv/bin/pytest -q tests/test_pr0_contract_compatibility.py
+```
+
+PR-3 intent trace smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr3_router_intent_trace.py
 ```
 
 ## Nonstop Codex Swarm Runbook

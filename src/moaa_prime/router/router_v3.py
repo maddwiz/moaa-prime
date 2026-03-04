@@ -12,6 +12,7 @@ from moaa_prime.agents.base import BaseAgent
 from moaa_prime.contracts import Contract
 
 from .embeddings import contract_embedding, cosine_similarity, task_embedding
+from .intent import analyze_prompt_intent, intent_alignment_score, intent_confidence_score
 from .router_v2 import RoutingBudget
 
 
@@ -84,6 +85,9 @@ class RouteDecisionV3:
     expected_utility: float = 0.0
     selected_by_exploration: bool = False
     components: Dict[str, float] = field(default_factory=dict)
+    intent: str = "general"
+    matched_features: tuple[str, ...] = field(default_factory=tuple)
+    intent_scores: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -412,6 +416,8 @@ class RouterV3:
         k = max(1, min(int(k), len(self.agents)))
         budget_obj = self._budget_obj(budget)
         chosen_budget_mode = _canonical_budget_mode(budget_mode or self._budget_mode(budget)) or "balanced"
+        intent = analyze_prompt_intent(prompt, task_metadata=task_metadata)
+        intent_confidence = intent_confidence_score(intent.scores, intent.intent)
 
         scored: List[Tuple[float, str, BaseAgent, Dict[str, float], float]] = []
         for agent in self.agents:
@@ -435,7 +441,18 @@ class RouterV3:
                 0.0,
                 1.0,
             )
-            utility = _utility_from_expected_success(expected_success, features, chosen_budget_mode)
+            intent_alignment = intent_alignment_score(intent.intent, list(contract.domains or []))
+            intent_prior = _clamp(
+                (intent_alignment * intent_confidence) + (0.5 * (1.0 - intent_confidence)),
+                0.0,
+                1.0,
+            )
+            expected_success_stabilized = _clamp((0.80 * expected_success) + (0.20 * intent_prior), 0.0, 1.0)
+            utility = _utility_from_expected_success(expected_success_stabilized, features, chosen_budget_mode)
+            features["intent_alignment"] = float(intent_alignment)
+            features["intent_confidence"] = float(intent_confidence)
+            features["intent_prior"] = float(intent_prior)
+            features["expected_success_stabilized"] = float(expected_success_stabilized)
 
             scored.append((float(utility), agent_name, agent, features, expected_success))
 
@@ -446,6 +463,8 @@ class RouterV3:
             profile = BUDGET_PROFILES[chosen_budget_mode]
             rationale = (
                 f"expected_success={expected_success:.3f}; "
+                f"expected_success_stabilized={features['expected_success_stabilized']:.3f}; "
+                f"intent={intent.intent}:{intent_confidence:.2f}; "
                 f"sim={features['similarity']:.2f}; "
                 f"budget={chosen_budget_mode}; "
                 f"w=({profile['quality_weight']:.2f},{profile['cost_weight']:.2f},{profile['latency_weight']:.2f})"
@@ -463,6 +482,9 @@ class RouterV3:
                     expected_utility=float(utility),
                     selected_by_exploration=False,
                     components=components,
+                    intent=intent.intent,
+                    matched_features=tuple(intent.matched_features),
+                    intent_scores={k: float(v) for k, v in intent.scores.items()},
                 )
             )
 

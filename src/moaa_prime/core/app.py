@@ -9,6 +9,7 @@ from typing import Any, Dict, Mapping, Optional
 from moaa_prime.agents import CodeAgent, MathAgent
 from moaa_prime.contracts import Contract
 from moaa_prime.router import MetaRouter, RouterV2, RouterV3, contract_embedding
+from moaa_prime.router.intent import analyze_prompt_intent, intent_confidence_score
 
 from moaa_prime.oracle.verifier import OracleV2, OracleVerifier
 from moaa_prime.swarm.manager import SwarmManager
@@ -237,9 +238,39 @@ class MoAAPrime:
             "components": getattr(decision, "components", {}) or {},
         }
 
+        fallback_intent = analyze_prompt_intent(prompt, task_metadata=task_meta)
+        decision_intent = getattr(decision, "intent", None)
+        if isinstance(decision_intent, str) and decision_intent.strip():
+            intent = decision_intent.strip().lower()
+        else:
+            intent = fallback_intent.intent
+
+        decision_features = getattr(decision, "matched_features", ())
+        if isinstance(decision_features, (list, tuple)):
+            matched_features = [str(x) for x in decision_features if str(x).strip()]
+        else:
+            matched_features = list(fallback_intent.matched_features)
+
+        decision_intent_scores = getattr(decision, "intent_scores", {})
+        if isinstance(decision_intent_scores, Mapping):
+            intent_scores = {str(k): float(v) for k, v in decision_intent_scores.items()}
+        else:
+            intent_scores = {k: float(v) for k, v in fallback_intent.scores.items()}
+
+        route_trace = {
+            "intent": intent,
+            "intent_scores": intent_scores,
+            "intent_confidence": float(intent_confidence_score(intent_scores, intent)),
+            "matched_features": matched_features,
+            "chosen_agent": decision_payload["agent"],
+            "selected_by_exploration": decision_payload["selected_by_exploration"],
+            "ranking_rationale": decision_payload["rationale"],
+        }
+
         return {
             "mode": run_mode,
             "decision": decision_payload,
+            "route_trace": route_trace,
             "result": {
                 "agent": result.agent_name,
                 "text": result.text,

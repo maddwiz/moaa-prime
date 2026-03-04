@@ -2,6 +2,39 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003L — PR-3 router intent-first stabilizer + route trace metadata
+- Added deterministic intent-first policy module:
+  - `src/moaa_prime/router/intent.py`
+  - intent labels: `math`, `code`, `general`
+  - deterministic matched-feature extraction + per-intent scores
+- Integrated intent-first stabilizer into routers:
+  - `src/moaa_prime/router/router_v2.py`
+  - `src/moaa_prime/router/router_v3.py`
+  - both routers now emit additive decision metadata:
+    - `intent`
+    - `matched_features`
+    - `intent_scores`
+- Extended router trace metadata (additive, contract-safe):
+  - `src/moaa_prime/swarm/manager.py`
+  - `trace.router` now includes:
+    - `intent`
+    - `matched_features`
+    - `chosen_agent`
+    - `alternatives`
+    - `ranking_rationale`
+    - `intent_scores`
+    - `intent_confidence`
+- Extended run-once debug surface with additive route trace:
+  - `src/moaa_prime/core/app.py`
+  - top-level `route_trace` now mirrors deterministic intent routing metadata.
+- Added deterministic PR-3 tests:
+  - `tests/test_pr3_router_intent_trace.py`
+  - validates deterministic intent classification, intent-first routing behavior, and emitted route trace schema.
+- Updated continuity docs:
+  - `CONTRACTS.md`
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003K — PR-2 deterministic code sandbox verifier
 - Added PR-2 sandbox module:
   - `src/moaa_prime/tools/code_sandbox.py`

@@ -3,6 +3,7 @@ from __future__ import annotations
 import statistics
 from typing import Any, Dict, List, Mapping, Optional, Union
 
+from moaa_prime.router.intent import analyze_prompt_intent, intent_confidence_score
 from moaa_prime.router.meta_router import MetaRouter
 from moaa_prime.swarm.pareto import pareto_frontier
 
@@ -102,10 +103,32 @@ class SwarmManager:
                 raise
         return {"score": score, "reason": "", "meta": {}}
 
-    def _build_router_trace(self, decisions: List[Any], chosen_mode: str) -> Dict[str, Any]:
+    def _build_router_trace(
+        self,
+        decisions: List[Any],
+        chosen_mode: str,
+        *,
+        prompt: str = "",
+        task_metadata: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        fallback_intent = analyze_prompt_intent(prompt, task_metadata=task_metadata)
+        intent = fallback_intent.intent
+        matched_features = list(fallback_intent.matched_features)
+        intent_scores: Dict[str, float] = {k: float(v) for k, v in fallback_intent.scores.items()}
+
         ranked: List[Dict[str, Any]] = []
-        for d in decisions:
+        for idx, d in enumerate(decisions):
             comps = getattr(d, "components", {}) or {}
+            if idx == 0:
+                raw_intent = getattr(d, "intent", None)
+                if isinstance(raw_intent, str) and raw_intent.strip():
+                    intent = raw_intent.strip().lower()
+                raw_features = getattr(d, "matched_features", ())
+                if isinstance(raw_features, (list, tuple)):
+                    matched_features = [str(x) for x in raw_features if str(x).strip()]
+                raw_scores = getattr(d, "intent_scores", {})
+                if isinstance(raw_scores, Mapping):
+                    intent_scores = {str(k): float(v) for k, v in raw_scores.items()}
             ranked.append(
                 {
                     "agent": getattr(d, "agent_name", ""),
@@ -123,10 +146,28 @@ class SwarmManager:
         if ranked:
             exploration_probability = float(ranked[0].get("exploration_probability", 0.0))
 
+        chosen_agent = ranked[0]["agent"] if ranked else ""
+        alternatives = [
+            {
+                "agent": r["agent"],
+                "score": float(r["score"]),
+                "reason": r["reason"],
+                "rationale": r["rationale"],
+            }
+            for r in ranked[1:]
+        ]
+
         return {
             "mode": chosen_mode,
             "ranked": ranked,
             "exploration_probability": exploration_probability,
+            "intent": intent,
+            "intent_scores": intent_scores,
+            "intent_confidence": float(intent_confidence_score(intent_scores, intent)),
+            "matched_features": matched_features,
+            "chosen_agent": chosen_agent,
+            "alternatives": alternatives,
+            "ranking_rationale": "ranked by router decision score (desc), then deterministic agent-name order",
         }
 
     # -----------------------------
@@ -491,7 +532,12 @@ class SwarmManager:
         aggregates = self._aggregate_proxies(candidates)
 
         trace = {
-            "router": self._build_router_trace(decisions, chosen_mode),
+            "router": self._build_router_trace(
+                decisions,
+                chosen_mode,
+                prompt=prompt,
+                task_metadata=task_metadata,
+            ),
             "swarm": {
                 "mode": chosen_mode,
                 "rounds": int(max(1, rounds)),

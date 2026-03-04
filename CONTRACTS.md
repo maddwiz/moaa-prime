@@ -41,6 +41,8 @@ Required keys:
 Notes:
 - Values are normalized with defaults in `run_once(...)` (missing router attributes are backfilled).
 - `components` is implementation-defined but must remain a dictionary.
+- Additive debug field:
+  - `route_trace: dict` may be emitted at top level with router intent metadata (`intent`, `matched_features`, `chosen_agent`, etc.).
 
 ## 2) Swarm output shape (`MoAAPrime.run_swarm(...)`)
 
@@ -108,6 +110,15 @@ Additive candidate key currently used:
 - `mode: str`
 - `ranked: list[dict]`
 - `exploration_probability: float`
+
+Additive router-trace metadata (PR-3 intent trace, optional but stable when present):
+- `intent: str` (`"math" | "code" | "general"`)
+- `intent_scores: dict[str, float]`
+- `intent_confidence: float`
+- `matched_features: list[str]`
+- `chosen_agent: str`
+- `alternatives: list[dict]` with additive fields such as `agent`, `score`, `reason`, `rationale`
+- `ranking_rationale: str`
 
 Each `trace.router.ranked[*]` required keys:
 - `agent: str`

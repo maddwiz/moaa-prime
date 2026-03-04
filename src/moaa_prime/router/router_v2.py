@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from moaa_prime.agents.base import BaseAgent
 
+from .intent import analyze_prompt_intent, intent_alignment_score, intent_confidence_score
+
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
@@ -34,6 +36,9 @@ class RouteDecisionV2:
     expected_utility: float = 0.0
     selected_by_exploration: bool = False
     components: Dict[str, float] = field(default_factory=dict)
+    intent: str = "general"
+    matched_features: tuple[str, ...] = field(default_factory=tuple)
+    intent_scores: Dict[str, float] = field(default_factory=dict)
 
 
 class RouterV2:
@@ -180,6 +185,8 @@ class RouterV2:
         self,
         agent: BaseAgent,
         prompt_tokens: set[str],
+        intent: str,
+        intent_confidence: float,
         memory_hints: Mapping[str, Any] | None,
         budget: RoutingBudget,
         history_stats: Mapping[str, Any] | None,
@@ -193,23 +200,36 @@ class RouterV2:
         cost_prior = _clamp(float(getattr(c, "cost_prior", 0.3) or 0.3), 0.0, 1.0)
 
         domain_match = self._domain_match(prompt_tokens, domains)
+        intent_alignment = intent_alignment_score(intent, domains)
+        intent_signal = _clamp(
+            (intent_alignment * _clamp(intent_confidence, 0.0, 1.0))
+            + (0.5 * (1.0 - _clamp(intent_confidence, 0.0, 1.0))),
+            0.0,
+            1.0,
+        )
+        domain_signal = _clamp((0.70 * domain_match) + (0.30 * intent_alignment), 0.0, 1.0)
         memory_alignment = self._memory_alignment(name, memory_hints)
         history_success = self._history_success(name, reliability, history_stats)
         budget_efficiency = self._budget_efficiency(name, cost_prior, budget, history_stats)
 
         utility = (
-            (0.35 * competence)
-            + (0.20 * reliability)
-            + (0.15 * domain_match)
-            + (0.10 * memory_alignment)
-            + (0.10 * history_success)
-            + (0.10 * budget_efficiency)
+            (0.32 * competence)
+            + (0.19 * reliability)
+            + (0.16 * domain_signal)
+            + (0.12 * intent_signal)
+            + (0.08 * memory_alignment)
+            + (0.07 * history_success)
+            + (0.06 * budget_efficiency)
         )
 
         return {
             "competence": competence,
             "reliability": reliability,
             "domain_match": domain_match,
+            "domain_signal": domain_signal,
+            "intent_alignment": intent_alignment,
+            "intent_confidence": _clamp(intent_confidence, 0.0, 1.0),
+            "intent_signal": intent_signal,
             "memory_alignment": memory_alignment,
             "history_success": history_success,
             "budget_efficiency": budget_efficiency,
@@ -234,7 +254,8 @@ class RouterV2:
             (
                 ("competence", components["competence"]),
                 ("reliability", components["reliability"]),
-                ("domain_match", components["domain_match"]),
+                ("domain_signal", components["domain_signal"]),
+                ("intent_signal", components["intent_signal"]),
                 ("memory_alignment", components["memory_alignment"]),
                 ("history_success", components["history_success"]),
                 ("budget_efficiency", components["budget_efficiency"]),
@@ -243,7 +264,11 @@ class RouterV2:
             reverse=True,
         )
         top2 = ", ".join(f"{k}={v:.2f}" for k, v in ranked[:2])
-        return f"utility={components['utility']:.3f}; {top2}"
+        return (
+            f"utility={components['utility']:.3f}; "
+            f"intent_conf={components['intent_confidence']:.2f}; "
+            f"{top2}"
+        )
 
     def route_top_k(
         self,
@@ -271,11 +296,21 @@ class RouterV2:
                 cost_weight=float(budget.get("cost_weight", 0.5)),
             )
 
+        intent = analyze_prompt_intent(prompt or "", task_metadata=task_metadata)
+        intent_conf = intent_confidence_score(intent.scores, intent.intent)
         prompt_tokens = self._prompt_tokens(prompt or "", task_metadata)
 
         scored: List[Tuple[float, str, BaseAgent, Dict[str, float]]] = []
         for agent in self.agents:
-            comps = self._score_components(agent, prompt_tokens, memory_hints, budget_obj, history_stats)
+            comps = self._score_components(
+                agent,
+                prompt_tokens,
+                intent=intent.intent,
+                intent_confidence=intent_conf,
+                memory_hints=memory_hints,
+                budget=budget_obj,
+                history_stats=history_stats,
+            )
             agent_name = str(getattr(agent.contract, "name", "agent"))
             scored.append((float(comps["utility"]), agent_name, agent, comps))
 
@@ -297,6 +332,9 @@ class RouterV2:
                     expected_utility=float(utility),
                     selected_by_exploration=False,
                     components={k: float(v) for k, v in comps.items()},
+                    intent=intent.intent,
+                    matched_features=tuple(intent.matched_features),
+                    intent_scores={k: float(v) for k, v in intent.scores.items()},
                 )
             )
 
