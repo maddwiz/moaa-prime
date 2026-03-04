@@ -196,10 +196,29 @@ Current base memory payload keys:
 
 `local_hits` and `bank_hits` are mandatory in this freeze and must remain numeric counts.
 
+## 5) App Method Signature Compatibility
+
+`MoAAPrime` public method signatures are frozen for required positional arguments:
+
+- `run_once(prompt, task_id="default", *, ...)`
+  - required positional/positional-or-keyword:
+    - `prompt`
+    - `task_id` (default `"default"`)
+  - additive parameters must be keyword-only.
+
+- `run_swarm(prompt, task_id="default", rounds=3, top_k=2, *, ...)`
+  - required positional/positional-or-keyword:
+    - `prompt`
+    - `task_id` (default `"default"`)
+    - `rounds` (default `3`)
+    - `top_k` (default `2`)
+  - additive parameters must be keyword-only.
+
 ## Compatibility Policy
 
 - Required keys listed above are stable.
 - Additive fields are allowed at any object level.
+- Additive fields may be present or absent; consumers must not depend on additive fields as required.
 - Silent removals of required keys are not allowed.
 - Silent type changes for required keys are not allowed.
 - Any removal or type change requires an explicit contract/version update.

@@ -14,6 +14,11 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
   - compatibility test suite: `tests/test_pr0_contract_compatibility.py`
+  - hardened compatibility coverage:
+    - frozen `MoAAPrime.run_once` / `MoAAPrime.run_swarm` required positional signatures
+    - conditional `trace_path` assertion (`run_id` absent/present behavior)
+    - additive optional field policy checks (`route_trace`, router intent metadata, dual-gate trace, candidate critique)
+    - per-entry schema assertions for `trace.router.ranked[*]` and `trace.oracle.scores[*]`
 - Frozen contracts now explicitly cover:
   - router output shape (`run_once(...).decision`)
   - swarm output shape (`run_swarm(...)`)

@@ -92,6 +92,9 @@ Existing phase tests remain in `tests/test_phase*.py` plus CLI/import tests.
 
 Roadmap PR-0 compatibility tests:
 - `tests/test_pr0_contract_compatibility.py`
+  - covers required shape/type keys for `run_once` and `run_swarm` across `v1`/`v2`/`v3`
+  - freezes required positional method signatures for `run_once` and `run_swarm`
+  - validates conditional `trace_path` contract and additive-field optionality behavior
 
 Roadmap PR-1 tests:
 - `tests/test_pr1_tool_first_policy.py`

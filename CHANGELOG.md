@@ -2,6 +2,25 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003P — PR-0 contract freeze hardening
+- Hardened PR-0 compatibility suite in `tests/test_pr0_contract_compatibility.py`:
+  - added public signature compatibility checks for:
+    - `MoAAPrime.run_once(prompt, task_id="default", *, ...)`
+    - `MoAAPrime.run_swarm(prompt, task_id="default", rounds=3, top_k=2, *, ...)`
+  - strengthened trace schema assertions to validate all entries in:
+    - `trace.router.ranked[*]`
+    - `trace.oracle.scores[*]`
+  - added conditional `trace_path` contract assertions:
+    - absent when `run_id` is not provided
+    - present and existing when `run_id` is provided
+  - added additive-field policy checks proving required-key compatibility still passes when optional fields are removed (`route_trace`, router intent metadata, `trace.swarm.dual_gate`, candidate `critique`)
+- Updated `CONTRACTS.md`:
+  - documented frozen `MoAAPrime` method signature expectations for required positional arguments
+  - clarified additive optional-field compatibility policy
+- Updated continuity docs:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003O — Full-handoff strict completion gate
 - Tightened `.codex/done_criteria.json` so done means full handoff scope is implemented and verified.
   - added required artifact gates for full runbook outputs and finish modules
