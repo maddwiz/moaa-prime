@@ -2,6 +2,47 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 003R — PR-7 telemetry dashboard + smoke coverage
+- Implemented PR-7 dashboard script:
+  - `scripts/dashboard.py`
+  - deterministic CLI output with `--reports-dir` and `--format text|json`
+  - additive telemetry sections for:
+    - artifact availability/status
+    - mode-level eval-matrix deltas
+    - focused tool-first + dual-gate metrics
+    - router eval/training snippets
+    - final report verdict
+- Added deterministic failure taxonomy dashboard counters (always emitted):
+  - `ROUTING_MISS`
+  - `TOOL_PARSE_FAIL`
+  - `TOOL_EXEC_FAIL`
+  - `FORMAT_FAIL`
+  - `MEMORY_DRIFT`
+  - `DUAL_REGRESSION`
+  - `SWARM_LOOP`
+- Added deterministic PR-7 smoke tests:
+  - `tests/test_pr7_dashboard_smoke.py`
+  - coverage includes:
+    - stable dashboard rendering from seeded report artifacts
+    - missing-report tolerance (non-fatal execution + warning surface)
+    - required failure taxonomy class emission
+- Validation:
+  - `.venv/bin/pytest -q` -> `114 passed`
+  - `.venv/bin/python scripts/demo_run.py`
+  - `.venv/bin/python scripts/bench_run.py`
+  - `.venv/bin/python scripts/eval_run.py`
+  - `.venv/bin/python scripts/eval_tool_first.py`
+  - `.venv/bin/python scripts/eval_compare.py`
+  - `.venv/bin/python scripts/eval_dual_gate.py`
+  - `.venv/bin/python scripts/eval_matrix.py`
+  - `.venv/bin/python scripts/train_router.py`
+  - `.venv/bin/python scripts/eval_router.py`
+  - `.venv/bin/python scripts/render_report.py`
+  - `.venv/bin/python scripts/dashboard.py`
+- Updated continuity docs:
+  - `MASTER_HANDOFF.md`
+  - `FILEMAP.md`
+
 ## Cycle 003Q — PR-6 memory regression hardening
 - Implemented PR-6 deterministic memory regression suite:
   - `tests/test_pr6_memory_regression.py`

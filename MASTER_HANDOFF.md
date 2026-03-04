@@ -9,7 +9,7 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
 - Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
 
-## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6)
+## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7)
 
 - PR-0 is implemented:
   - contract freeze doc: `CONTRACTS.md`
@@ -127,6 +127,29 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
   - recall occurs before write in each handle path to avoid same-turn self-contamination.
   - malformed positional dict writes are rejected instead of silently writing default/empty rows.
 
+- PR-7 is implemented:
+  - deterministic dashboard script:
+    - `scripts/dashboard.py`
+  - deterministic PR-7 smoke tests:
+    - `tests/test_pr7_dashboard_smoke.py`
+- PR-7 behavior:
+  - dashboard renders deterministic, human-readable sections for:
+    - artifact availability and status
+    - mode-level eval matrix deltas
+    - focused tool-first and dual-gate metrics
+    - router eval/train snippets
+    - failure taxonomy counters
+    - final report verdict
+  - dashboard tolerates missing or invalid report files without crashing and emits warnings.
+  - failure taxonomy classes are always emitted:
+    - `ROUTING_MISS`
+    - `TOOL_PARSE_FAIL`
+    - `TOOL_EXEC_FAIL`
+    - `FORMAT_FAIL`
+    - `MEMORY_DRIFT`
+    - `DUAL_REGRESSION`
+    - `SWARM_LOOP`
+
 ## Cycle 3 Truth (Learning Loop)
 
 Execution modes:
@@ -180,6 +203,8 @@ python -m pip install -e . --no-deps
 .venv/bin/python scripts/eval_matrix.py
 .venv/bin/python scripts/train_router.py
 .venv/bin/python scripts/eval_router.py
+.venv/bin/python scripts/render_report.py
+.venv/bin/python scripts/dashboard.py
 ```
 
 PR-0 compatibility smoke:
@@ -204,6 +229,12 @@ PR-6 memory regression smoke:
 
 ```bash
 .venv/bin/pytest -q tests/test_pr6_memory_regression.py
+```
+
+PR-7 dashboard smoke:
+
+```bash
+.venv/bin/pytest -q tests/test_pr7_dashboard_smoke.py
 ```
 
 ## Nonstop Codex Swarm Runbook
