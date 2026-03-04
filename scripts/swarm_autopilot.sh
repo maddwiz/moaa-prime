@@ -245,12 +245,29 @@ maybe_autocommit_and_push() {
     else
       commit_status="no_changes"
     fi
+  fi
 
-    if [[ "$AUTOPUSH" == "1" ]] && [[ "$commit_status" == "ok" ]]; then
-      if git -C "$ROOT_DIR" push; then
-        push_status="ok"
+  if [[ "$AUTOPUSH" == "1" ]]; then
+    local branch ahead
+    branch="$(git -C "$ROOT_DIR" branch --show-current)"
+
+    if git -C "$ROOT_DIR" rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
+      ahead="$(git -C "$ROOT_DIR" rev-list --count "@{u}..HEAD")"
+      if (( ahead > 0 )); then
+        if git -C "$ROOT_DIR" push; then
+          push_status="ok"
+        else
+          push_status="failed"
+        fi
       else
-        push_status="failed"
+        push_status="no_changes"
+      fi
+    else
+      # First push for a new branch: set upstream automatically.
+      if git -C "$ROOT_DIR" push -u origin "$branch"; then
+        push_status="ok_upstream"
+      else
+        push_status="failed_no_upstream"
       fi
     fi
   fi
