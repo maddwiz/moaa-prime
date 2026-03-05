@@ -26,8 +26,8 @@ from moaa_prime.sfc import StabilityFieldController
 
 
 PASS_THRESHOLD = 0.75
-DEFAULT_CORE_MIN_CASES = 150
-DEFAULT_TOOL_FIRST_MIN_CASES = 90
+DEFAULT_CORE_MIN_CASES = 220
+DEFAULT_TOOL_FIRST_MIN_CASES = 140
 DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.66,
     "high_ambiguity_threshold": 0.85,

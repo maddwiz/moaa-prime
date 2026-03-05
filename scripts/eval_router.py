@@ -14,7 +14,7 @@ from moaa_prime.core.app import MoAAPrime
 from moaa_prime.eval.runner import EvalCase
 
 
-DEFAULT_MIN_CASES = 50
+DEFAULT_MIN_CASES = 100
 
 
 def _safe_int(value: object, *, default: int = 0) -> int:

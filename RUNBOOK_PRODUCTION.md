@@ -20,9 +20,14 @@ Run these commands in order from repo root:
 4. `python scripts/eval_compare.py`
 5. `python scripts/eval_dual_gate.py`
 6. `python scripts/eval_external_bench.py --output reports/external_bench.json`
-7. `python scripts/preflight_prod.py --output reports/preflight_prod.json`
-8. `python scripts/load_smoke.py --output reports/load_smoke.json --iters 50`
-9. `python scripts/check_done.py --criteria .codex/done_criteria.production.json`
+7. `python scripts/eval_tough_bench.py --output reports/tough_bench.json`
+8. `python scripts/tune_production.py --output reports/tuning_report.json`
+9. `python scripts/eval_stability.py --output reports/stability.json --seeds 10`
+10. `python scripts/eval_calibration.py --output reports/calibration.json`
+11. `python scripts/preflight_prod.py --output reports/preflight_prod.json`
+12. `python scripts/load_smoke.py --output reports/load_smoke.json --iters 50`
+13. `python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1000`
+14. `python scripts/check_done.py --criteria .codex/done_criteria.toughbench.json`
 
 Expected result:
 - Final command returns DONE and all previous commands exit successfully.
@@ -47,15 +52,21 @@ Use this sequence for production campaign/soak verification:
 3. `python scripts/eval_compare.py`
 4. `python scripts/eval_dual_gate.py`
 5. `python scripts/eval_external_bench.py --output reports/external_bench.json`
-6. `python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 500`
-7. `python scripts/check_done.py --criteria .codex/done_criteria.longevals.json`
+6. `python scripts/eval_tough_bench.py --output reports/tough_bench.json`
+7. `python scripts/tune_production.py --output reports/tuning_report.json`
+8. `python scripts/eval_stability.py --output reports/stability.json --seeds 10`
+9. `python scripts/eval_calibration.py --output reports/calibration.json`
+10. `python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1000`
+11. `python scripts/check_done.py --criteria .codex/done_criteria.toughbench.json`
 
 Long-eval pass criteria:
 - matrix counts: `summary.counts.num_cases >= 1200`
 - router/compare counts: `>= 50`
 - dual baseline counts: `>= 150`
-- external holdout: `counts.num_cases >= 100` and `metrics.pass_rate >= 0.75`
-- long smoke: `request_count >= 500`, `error_rate <= 0.01`, `p95_latency_ms <= 2500`
+- external holdout: `counts.num_cases >= 250` and `metrics.pass_rate >= 0.80`
+- tough bench: `counts.num_cases >= 300`, worst-category pass-rate `>= 0.60`
+- stability/calibration: stddev and ECE/Brier must remain within done-criteria budgets
+- long smoke: `request_count >= 1000`, `error_rate <= 0.01`, `p95_latency_ms <= 2500`
 
 ## Release Procedure
 Release is manual by design to keep control explicit.

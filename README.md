@@ -75,6 +75,12 @@ python scripts/train_router.py
 python scripts/eval_router.py
 python scripts/preflight_prod.py --output reports/preflight_prod.json
 python scripts/load_smoke.py --output reports/load_smoke.json --iters 50
+python scripts/eval_external_bench.py --output reports/external_bench.json
+python scripts/eval_tough_bench.py --output reports/tough_bench.json
+python scripts/tune_production.py --output reports/tuning_report.json
+python scripts/eval_stability.py --output reports/stability.json --seeds 10
+python scripts/eval_calibration.py --output reports/calibration.json
+python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1000
 python scripts/render_report.py
 python scripts/dashboard.py
 ```
@@ -93,6 +99,12 @@ Expected outputs:
 - `reports/eval_router.json`
 - `reports/preflight_prod.json`
 - `reports/load_smoke.json`
+- `reports/external_bench.json`
+- `reports/tough_bench.json`
+- `reports/tuning_report.json`
+- `reports/stability.json`
+- `reports/calibration.json`
+- `reports/load_smoke_long.json`
 - `reports/final_report.json`
 
 Schema notes:
@@ -197,10 +209,17 @@ Production readiness command sequence:
 pytest -q
 python scripts/eval_matrix.py
 python scripts/eval_router.py
+python scripts/eval_compare.py
 python scripts/eval_dual_gate.py
+python scripts/eval_external_bench.py --output reports/external_bench.json
+python scripts/eval_tough_bench.py --output reports/tough_bench.json
+python scripts/tune_production.py --output reports/tuning_report.json
+python scripts/eval_stability.py --output reports/stability.json --seeds 10
+python scripts/eval_calibration.py --output reports/calibration.json
 python scripts/preflight_prod.py --output reports/preflight_prod.json
 python scripts/load_smoke.py --output reports/load_smoke.json --iters 50
-python scripts/check_done.py --criteria .codex/done_criteria.production.json
+python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1000
+python scripts/check_done.py --criteria .codex/done_criteria.toughbench.json
 ```
 
 ## Known Limits

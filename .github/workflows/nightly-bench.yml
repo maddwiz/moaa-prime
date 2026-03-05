@@ -1,0 +1,48 @@
+name: Nightly Bench
+
+on:
+  schedule:
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MOAA_LLM_PROVIDER: stub
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run nightly benchmark suite
+        run: |
+          python scripts/eval_matrix.py
+          python scripts/eval_router.py
+          python scripts/eval_compare.py
+          python scripts/eval_dual_gate.py
+          python scripts/eval_external_bench.py --output reports/external_bench.json
+          python scripts/eval_tough_bench.py --output reports/tough_bench.json
+          python scripts/tune_production.py --output reports/tuning_report.json
+          python scripts/eval_stability.py --output reports/stability.json --seeds 10
+          python scripts/eval_calibration.py --output reports/calibration.json
+          python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1000
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-bench-reports
+          path: reports/*.json

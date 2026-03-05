@@ -15,7 +15,7 @@ from moaa_prime.eval.cases import CATEGORY_ORDER, CORE_EVAL_CASES
 
 
 PASS_THRESHOLD = 0.70
-DEFAULT_MIN_CASES = 150
+DEFAULT_MIN_CASES = 200
 DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.60,
     "high_ambiguity_threshold": 0.85,

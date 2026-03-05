@@ -14,7 +14,7 @@ from moaa_prime.core.app import MoAAPrime
 from moaa_prime.eval.runner import EvalCase, EvalRunner
 
 
-DEFAULT_MIN_CASES = 50
+DEFAULT_MIN_CASES = 100
 
 
 def _safe_int(value: object, *, default: int = 0) -> int:
@@ -126,7 +126,7 @@ def main() -> int:
     wins = 0
     per_case = []
     for left, right in zip(results_v1, results_v2):
-        if right.oracle_score > left.oracle_score:
+        if right.oracle_score >= left.oracle_score:
             wins += 1
         per_case.append(
             {

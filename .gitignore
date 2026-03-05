@@ -37,6 +37,7 @@ checkpoints/
 !datasets/
 datasets/*
 !datasets/external_benchmarks.jsonl
+!datasets/tough_benchmarks.jsonl
 
 # Generated demo outputs
 reports/

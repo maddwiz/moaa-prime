@@ -7,8 +7,9 @@ The scope includes runtime safety, deterministic eval quality, CI/CD repeatabili
 The production control plane for this repository is:
 - CI workflow: `.github/workflows/ci.yml`
 - Release workflow: `.github/workflows/release.yml`
+- Nightly benchmark workflow: `.github/workflows/nightly-bench.yml`
 - Runtime gates: `scripts/preflight_prod.py`, `scripts/load_smoke.py`
-- Quality gates: `scripts/eval_matrix.py`, `scripts/eval_router.py`, `scripts/eval_compare.py`, `scripts/eval_dual_gate.py`, `scripts/eval_external_bench.py`
+- Quality gates: `scripts/eval_matrix.py`, `scripts/eval_router.py`, `scripts/eval_compare.py`, `scripts/eval_dual_gate.py`, `scripts/eval_external_bench.py`, `scripts/eval_tough_bench.py`, `scripts/tune_production.py`, `scripts/eval_stability.py`, `scripts/eval_calibration.py`
 
 ## Service Level Objectives (SLO)
 Primary SLO targets for release candidates:
@@ -24,7 +25,7 @@ Primary SLO targets for release candidates:
 - `load_smoke` must report:
   - `error_rate <= 0.01`
   - `p95_latency_ms <= 2500`
-- `load_smoke_long` (`--iters 500`) must report:
+- `load_smoke_long` (`--iters 1000`) must report:
   - `error_rate <= 0.01`
   - `p95_latency_ms <= 2500`
 
@@ -34,8 +35,19 @@ Primary SLO targets for release candidates:
   - oracle score gain delta `>= 0`
   - dual trigger rate bounded below full activation
 - External holdout benchmark remains healthy:
-  - `counts.num_cases >= 100`
+  - `counts.num_cases >= 250`
+  - `metrics.pass_rate >= 0.80`
+- Tough benchmark remains healthy:
+  - `counts.num_cases >= 300`
   - `metrics.pass_rate >= 0.75`
+  - adversarial split pass-rate `>= 0.60`
+  - OOD split pass-rate `>= 0.65`
+  - worst-category pass-rate `>= 0.60`
+- Stability and calibration evidence remains healthy:
+  - `stability.metrics.pass_rate_stddev <= 0.03`
+  - `stability.metrics.oracle_score_stddev <= 0.05`
+  - `calibration.metrics.ece <= 0.12`
+  - `calibration.metrics.brier_score <= 0.25`
 
 ## Availability and Recovery Targets
 - RTO: 30 minutes for production rollback to last known-good release.
@@ -102,6 +114,10 @@ Required evidence per release:
 - `reports/eval_compare.json`
 - `reports/dual_gated_eval.json`
 - `reports/external_bench.json`
+- `reports/tough_bench.json`
+- `reports/tuning_report.json`
+- `reports/stability.json`
+- `reports/calibration.json`
 - `reports/preflight_prod.json`
 - `reports/load_smoke.json`
 - `reports/load_smoke_long.json`
