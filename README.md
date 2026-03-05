@@ -47,6 +47,9 @@ python -m pytest -q
 | `MOAA_LLM_PROVIDER` | `stub` | `stub` or `ollama` |
 | `MOAA_OLLAMA_HOST` | `http://127.0.0.1:11434` | Used when provider is `ollama` |
 | `MOAA_OLLAMA_MODEL` | `llama3.1:8b-instruct` | Used when provider is `ollama` |
+| `MOAA_OLLAMA_TIMEOUT_SEC` | `30` | Request timeout for Ollama calls |
+| `MOAA_OLLAMA_MAX_RETRIES` | `2` | Retry attempts for transient Ollama failures |
+| `MOAA_OLLAMA_RETRY_BACKOFF_SEC` | `0.25` | Exponential retry backoff base |
 
 Example (Ollama):
 
@@ -70,6 +73,8 @@ python scripts/eval_dual_gate.py
 python scripts/eval_matrix.py
 python scripts/train_router.py
 python scripts/eval_router.py
+python scripts/preflight_prod.py --output reports/preflight_prod.json
+python scripts/load_smoke.py --output reports/load_smoke.json --iters 50
 python scripts/render_report.py
 python scripts/dashboard.py
 ```
@@ -86,6 +91,8 @@ Expected outputs:
 - `reports/eval_matrix.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`
+- `reports/preflight_prod.json`
+- `reports/load_smoke.json`
 - `reports/final_report.json`
 
 Schema notes:
@@ -176,6 +183,24 @@ Run done-check manually:
 
 ```bash
 python3 scripts/check_done.py --criteria .codex/done_criteria.json --report .codex/runs/autopilot/done_check.json
+```
+
+## Production Runbook
+
+Production operations docs:
+- `PRODUCTION_READINESS.md`
+- `RUNBOOK_PRODUCTION.md`
+
+Production readiness command sequence:
+
+```bash
+pytest -q
+python scripts/eval_matrix.py
+python scripts/eval_router.py
+python scripts/eval_dual_gate.py
+python scripts/preflight_prod.py --output reports/preflight_prod.json
+python scripts/load_smoke.py --output reports/load_smoke.json --iters 50
+python scripts/check_done.py --criteria .codex/done_criteria.production.json
 ```
 
 ## Known Limits

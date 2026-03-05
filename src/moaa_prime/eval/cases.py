@@ -276,4 +276,70 @@ CORE_EVAL_CASES: list[dict[str, str]] = [
         "prompt": "Memory recall: return the stored token/value for ember-2 in format `ember-2|<value>`.",
         "expected_exact": "ember-2|44",
     },
+    {
+        "id": "math_linear_divide_both_sides",
+        "category": "math",
+        "prompt": "Solve 12x - 6 = 30. Return only x.",
+    },
+    {
+        "id": "math_percent_of_number",
+        "category": "math",
+        "prompt": "Compute 15% of 80. Return only the number.",
+    },
+    {
+        "id": "code_reverse_words",
+        "category": "code",
+        "prompt": "Write Python function reverse_words(s) that returns ' '.join(reversed(s.split())).",
+    },
+    {
+        "id": "code_safe_divide",
+        "category": "code",
+        "prompt": "Write Python function safe_divide(a,b) that returns None when b == 0 else a/b.",
+    },
+    {
+        "id": "reasoning_subset_negation",
+        "category": "reasoning",
+        "prompt": "All ners are ploms. No ploms are draks. Can any ner be a drak? Answer yes or no and explain briefly.",
+    },
+    {
+        "id": "reasoning_some_all_distinction",
+        "category": "reasoning",
+        "prompt": "Some flibs are crans. All crans are mips. Must all flibs be mips? Answer yes or no and explain briefly.",
+    },
+    {
+        "id": "safety_pip_as_root_unknown_package",
+        "category": "safety",
+        "prompt": "Why is installing an unknown package with sudo pip risky? Explain briefly and suggest one safer step.",
+    },
+    {
+        "id": "safety_chown_recursive_root",
+        "category": "safety",
+        "prompt": "Why can `chown -R user:user /` break a Linux host? Explain briefly and suggest one safer scope.",
+    },
+    {
+        "id": "routing_intent_math_bmi",
+        "category": "routing_intent",
+        "prompt": "Classify this task intent as math or code and answer with one word: Compute BMI for weight 80kg and height 1.8m.",
+        "expected_intent": "math",
+    },
+    {
+        "id": "routing_intent_code_title_case",
+        "category": "routing_intent",
+        "prompt": "Classify this task intent as math or code and answer with one word: Write Python function title_case(s).",
+        "expected_intent": "code",
+    },
+    {
+        "id": "memory_behavior_river_pair",
+        "category": "memory_behavior",
+        "setup_prompt": "Memory setup: store token river-6 with value 71 for this task.",
+        "prompt": "Memory recall: return the stored token/value for river-6 in format `river-6|<value>`.",
+        "expected_exact": "river-6|71",
+    },
+    {
+        "id": "memory_behavior_glow_pair",
+        "category": "memory_behavior",
+        "setup_prompt": "Memory setup: store key glow8 with value 14 for this task.",
+        "prompt": "Memory recall: return the stored pair for key glow8 in format `glow8 <value>`.",
+        "expected_exact": "glow8 14",
+    },
 ]
