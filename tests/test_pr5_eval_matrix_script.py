@@ -54,6 +54,7 @@ def _assert_run_shape(run: dict) -> None:
     assert "avg_oracle_score" in run
     assert "oracle_distribution" in run
     assert "category_summary" in run
+    assert "deterministic_checks" in run
     assert "summary" in run
     assert "cases" in run
 
@@ -125,6 +126,8 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     assert run_index["dual_gated"]["avg_latency_proxy"] < 50.0
     assert run_index["swarm"]["pass_rate"] >= run_index["baseline_single"]["pass_rate"]
     assert run_index["dual_gated"]["pass_rate"] >= run_index["swarm"]["pass_rate"]
+    assert run_index["swarm"]["deterministic_checks"]["routing_intent"]["num_cases"] > 0
+    assert run_index["swarm"]["deterministic_checks"]["memory_behavior"]["num_cases"] > 0
     dual_trigger_flags = [bool(row.get("dual_triggered", False)) for row in run_index["dual_gated"]["cases"]]
     assert not all(dual_trigger_flags)
 
@@ -155,6 +158,13 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     assert per_case["dual_gated_vs_baseline_single"]
     assert per_case["tool_first_on_vs_off"]
     assert "category" in per_case["swarm_vs_baseline_single"][0]
+    memory_deltas = [
+        int(row.get("pass_delta", 0))
+        for row in per_case["memory_on_vs_off"]
+        if str(row.get("category", "")) == "memory_behavior"
+    ]
+    assert memory_deltas
+    assert any(delta > 0 for delta in memory_deltas)
 
     assert compat_tool_1["suite"] == "pr1_tool_first"
     assert compat_tool_1["schema_version"] == "1.1"

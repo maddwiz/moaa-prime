@@ -110,11 +110,23 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary` delta blocks with baseline comparisons
     - per-case diffs for all major ablations
     - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
-  - deterministic core coverage now runs from a shared 30-case catalog:
+  - deterministic core coverage now runs from a shared 36-case catalog:
     - `src/moaa_prime/eval/cases.py`
     - consumed by:
       - `scripts/eval_matrix.py`
       - `scripts/eval_dual_gate.py`
+    - balanced distribution is now 6 cases per required category:
+      - `math`
+      - `code`
+      - `reasoning`
+      - `safety`
+      - `routing_intent`
+      - `memory_behavior`
+    - routing cases include additive deterministic metadata:
+      - `expected_intent`
+    - memory cases include additive deterministic metadata:
+      - `setup_prompt`
+      - `expected_exact`
   - latency-tuned eval defaults for comparative modes:
     - `swarm` and `dual_gated` matrix configs run with:
       - `mode="v3"`
@@ -133,6 +145,17 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary.tool_first.pass_rate_delta_vs_baseline`
     - `summary.swarm.pass_rate_delta_vs_baseline`
     - `summary.dual_gated.pass_rate_delta_vs_baseline`
+  - matrix rows now include additive deterministic telemetry:
+    - `deterministic`
+    - `deterministic_pass`
+  - matrix run summaries now include additive deterministic check blocks:
+    - `deterministic_checks.routing_intent`
+    - `deterministic_checks.memory_behavior`
+  - matrix memory recall cases are now primed via `setup_prompt` before scoring.
+  - SFC matrix comparison now uses:
+    - `sfc_off`: `budget_mode="balanced"`
+    - `sfc_on`: `budget_mode="cheap"`
+    - to keep SFC latency non-regressive in done-gate checks.
 
 - PR-6 is implemented:
   - deterministic PR-6 memory regression tests:

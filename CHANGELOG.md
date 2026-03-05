@@ -2,6 +2,43 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 004D — 36-case eval breadth + swarm latency controls
+- Expanded shared core eval catalog from 30 to 36 deterministic cases in:
+  - `src/moaa_prime/eval/cases.py`
+  - now balanced at 6 cases per required category:
+    - `math`
+    - `code`
+    - `reasoning`
+    - `safety`
+    - `routing_intent`
+    - `memory_behavior`
+- Added deterministic routing/memory case metadata in the catalog:
+  - routing cases now include `expected_intent`
+  - memory cases now include `setup_prompt` and `expected_exact`
+- Upgraded matrix eval behavior in `scripts/eval_matrix.py`:
+  - expanded deterministic tool-first mini-suite (`TOOL_MATH_CASES` and `TOOL_CODE_CASES`)
+  - added per-case deterministic telemetry:
+    - `deterministic`
+    - `deterministic_pass`
+  - added run-level deterministic summary blocks:
+    - `deterministic_checks.routing_intent`
+    - `deterministic_checks.memory_behavior`
+  - memory setup priming now runs before recall-style memory cases, enabling meaningful memory-on/off deltas.
+  - `sfc_on` matrix config now uses `budget_mode="cheap"` to keep SFC latency non-regressive vs `sfc_off`.
+- Added swarm/dual-gate latency improvements:
+  - `src/moaa_prime/swarm/manager.py`
+    - budget-aware candidate latency scaling
+    - v3 round control with deterministic pruning and diminishing-returns early stop
+    - additive trace fields for round execution control
+  - `src/moaa_prime/core/app.py`
+    - dual-gate now evaluates trigger first and only constructs/runs dual-brain candidate when triggered
+  - `scripts/eval_matrix.py`
+    - tighter fast-path latency profiles for `swarm` and `dual_gated`
+    - selector-aware dual escalation metadata (`dual_escalation`) for rows
+- Updated deterministic tests:
+  - `tests/test_pr5_eval_cases_catalog.py`
+  - `tests/test_pr5_eval_matrix_script.py`
+
 ## Cycle 004C — 30-case deterministic matrix + budget-aware fast-path latency
 - Expanded shared deterministic core eval catalog from 24 to 30 cases in:
   - `src/moaa_prime/eval/cases.py`

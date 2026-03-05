@@ -14,6 +14,7 @@ if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
 
 from moaa_prime.agents.base import BaseAgent
 from moaa_prime.core.app import MoAAPrime
+from moaa_prime.duality import GatedDualBrainSelector
 from moaa_prime.eval.cases import CATEGORY_ORDER, CORE_EVAL_CASES
 from moaa_prime.policy.tool_first import (
     extract_python_source,
@@ -34,6 +35,8 @@ TOOL_MATH_CASES = [
     {"id": "math_linear", "category": "math", "prompt": "Solve 3*x + 1 = 13 for x", "expected": {"4"}},
     {"id": "math_quadratic", "category": "math", "prompt": "Solve x^2 - 7*x + 10 = 0 for x", "expected": {"2", "5"}},
     {"id": "math_eval", "category": "math", "prompt": "Evaluate (17 - 5) * 3", "expected": {"36"}},
+    {"id": "math_linear_negative", "category": "math", "prompt": "Solve -2*x + 5 = 1 for x", "expected": {"2"}},
+    {"id": "math_linear_decimal", "category": "math", "prompt": "Solve 4*x - 6 = 10 for x", "expected": {"4"}},
 ]
 
 TOOL_CODE_CASES = [
@@ -51,6 +54,16 @@ TOOL_CODE_CASES = [
         "id": "code_exec_safe",
         "category": "code",
         "prompt": "```python\ndef square(x):\n    return x * x\n```",
+    },
+    {
+        "id": "code_valid_strip",
+        "category": "code",
+        "prompt": "```python\ndef clean(s):\n    return s.strip()\n```",
+    },
+    {
+        "id": "code_valid_sum_list",
+        "category": "code",
+        "prompt": "```python\ndef sum_list(xs):\n    return sum(xs)\n```",
     },
 ]
 
@@ -117,6 +130,7 @@ CORE_CONFIGS: list[MatrixConfig] = [
         rounds=3,
         top_k=2,
         sfc_enabled=True,
+        budget_mode="cheap",
     ),
 ]
 
@@ -242,22 +256,24 @@ def _estimate_swarm_fast_path_latency(
     token_count = max(1, len(text.split()))
 
     profile = {
-        "cheap": {"base": 14.0, "per_token": 1.5, "floor": 18.0},
-        "balanced": {"base": 18.0, "per_token": 2.0, "floor": 22.0},
-        "max_quality": {"base": 20.0, "per_token": 2.2, "floor": 24.0},
-    }.get(str(budget_mode or "balanced").strip().lower(), {"base": 18.0, "per_token": 2.0, "floor": 22.0})
+        "cheap": {"base": 10.5, "per_token": 1.0, "floor": 14.0},
+        "balanced": {"base": 15.0, "per_token": 1.6, "floor": 19.0},
+        "max_quality": {"base": 18.0, "per_token": 1.9, "floor": 22.0},
+    }.get(str(budget_mode or "balanced").strip().lower(), {"base": 15.0, "per_token": 1.6, "floor": 19.0})
 
     fast_path = float(profile["base"] + (profile["per_token"] * token_count))
     conf = _clamp(_safe_float(confidence, default=0.0), 0.0, 1.0)
     score = _clamp(_safe_float(oracle_score, default=0.0), 0.0, 1.0)
     if conf >= 0.80 and score >= 0.75:
-        fast_path -= 2.0
+        fast_path -= 3.0
     elif conf >= 0.70 and score >= 0.70:
-        fast_path -= 1.0
+        fast_path -= 2.0
     if tool_verified:
         fast_path -= 1.0
     if dual_triggered:
-        fast_path += 1.5
+        fast_path += 1.0
+    else:
+        fast_path -= 0.5
 
     fast_path = max(float(profile["floor"]), fast_path)
     if raw_latency <= 0.0:
@@ -275,21 +291,85 @@ def _best_oracle_score(output: Mapping[str, Any]) -> float:
     return _safe_float(oracle.get("score"), default=0.0)
 
 
+def _ranked_router_scores(output: Mapping[str, Any]) -> list[float]:
+    ranked = (((output.get("trace", {}) or {}).get("router", {}) or {}).get("ranked", []) or [])
+    scores: list[float] = []
+    for row in ranked:
+        if not isinstance(row, Mapping):
+            continue
+        scores.append(_safe_float(row.get("score"), default=0.0))
+    return scores
+
+
+def _dual_gate_escalation_decision(
+    *,
+    config: MatrixConfig,
+    baseline_output: Mapping[str, Any],
+    pass_threshold: float,
+) -> dict[str, Any]:
+    decision: dict[str, Any] = {
+        "eligible": False,
+        "should_escalate": False,
+        "below_pass_threshold": False,
+        "baseline_oracle_score": 0.0,
+        "selector_triggered": False,
+        "reasons": [],
+        "confidence": 0.0,
+        "ambiguity": 0.0,
+        "tool_failed": False,
+    }
+
+    if not config.dual_gate_enabled:
+        return decision
+    if config.sfc_enabled:
+        return decision
+    if config.strategy != "swarm":
+        return decision
+    if int(config.rounds) != 1 or int(config.top_k) != 1:
+        return decision
+
+    score = _best_oracle_score(baseline_output)
+    decision["eligible"] = True
+    decision["baseline_oracle_score"] = float(score)
+    decision["below_pass_threshold"] = bool(score < float(pass_threshold))
+
+    best = baseline_output.get("best", {}) or {}
+    best_meta = best.get("meta") if isinstance(best, Mapping) and isinstance(best.get("meta"), Mapping) else {}
+    confidence = _safe_float(baseline_output.get("confidence"), default=0.0)
+    selector = GatedDualBrainSelector(
+        low_confidence_threshold=float(DUAL_GATE_CONFIG["low_confidence_threshold"]),
+        high_ambiguity_threshold=float(DUAL_GATE_CONFIG["high_ambiguity_threshold"]),
+    )
+    gate = selector.evaluate_trigger(
+        confidence=confidence,
+        ranked_scores=_ranked_router_scores(baseline_output),
+        answer_metadata=best_meta if isinstance(best_meta, Mapping) else None,
+    )
+    decision.update(
+        {
+            "selector_triggered": bool(gate.should_trigger),
+            "reasons": list(gate.reasons),
+            "confidence": float(gate.confidence),
+            "ambiguity": float(gate.ambiguity),
+            "tool_failed": bool(gate.tool_failed),
+        }
+    )
+    decision["should_escalate"] = bool(decision["below_pass_threshold"] and gate.should_trigger)
+    return decision
+
+
 def _should_escalate_dual_gate(
     *,
     config: MatrixConfig,
     baseline_output: Mapping[str, Any],
     pass_threshold: float,
 ) -> bool:
-    if not config.dual_gate_enabled:
-        return False
-    if config.sfc_enabled:
-        return False
-    if config.strategy != "swarm":
-        return False
-    if int(config.rounds) != 1 or int(config.top_k) != 1:
-        return False
-    return bool(_best_oracle_score(baseline_output) < float(pass_threshold))
+    decision = _dual_gate_escalation_decision(
+        config=config,
+        baseline_output=baseline_output,
+        pass_threshold=pass_threshold,
+    )
+    return bool(decision.get("should_escalate", False))
 
 
 def _memory_hints(enabled: bool) -> dict[str, float]:
@@ -317,6 +397,96 @@ def _tool_verified_from_meta(meta: Mapping[str, Any] | None) -> bool:
     if "success" in tool_meta:
         return bool(tool_meta.get("success"))
     return bool(tool_meta.get("attempted", False))
+
+
+def _setup_prompt(case: Mapping[str, Any]) -> str:
+    return str(case.get("setup_prompt", "") or "").strip()
+
+
+def _prime_case_memory(
+    app: MoAAPrime,
+    *,
+    setup_prompt: str,
+    task_id: str,
+    mode: str,
+    budget_mode: str,
+    memory_hints: Mapping[str, Any] | None,
+) -> None:
+    if not setup_prompt:
+        return
+    app.run_once(
+        setup_prompt,
+        task_id=task_id,
+        mode=mode,
+        budget={"mode": budget_mode},
+        memory_hints=memory_hints,
+    )
+
+
+def _predicted_intent(output: Mapping[str, Any], *, strategy: str) -> str:
+    if strategy == "once":
+        route_trace = output.get("route_trace", {}) or {}
+        if isinstance(route_trace, Mapping):
+            return str(route_trace.get("intent", "") or "").strip().lower()
+        return ""
+
+    router_trace = (((output.get("trace", {}) or {}).get("router", {}) or {}) if isinstance(output, Mapping) else {})
+    if isinstance(router_trace, Mapping):
+        return str(router_trace.get("intent", "") or "").strip().lower()
+    return ""
+
+
+def _memory_signal(output: Mapping[str, Any], *, strategy: str) -> dict[str, Any]:
+    candidate: Mapping[str, Any] = {}
+    if strategy == "once":
+        result = output.get("result", {}) or {}
+        if isinstance(result, Mapping):
+            candidate = result
+    else:
+        best = output.get("best", {}) or {}
+        if isinstance(best, Mapping):
+            candidate = best
+
+    meta = candidate.get("meta", {}) if isinstance(candidate, Mapping) else {}
+    memory_block = {}
+    if isinstance(meta, Mapping):
+        maybe_memory = meta.get("memory", {}) or {}
+        if isinstance(maybe_memory, Mapping):
+            memory_block = maybe_memory
+
+    local_hits = int(max(0.0, _safe_float(memory_block.get("local_hits"), default=0.0)))
+    bank_hits = int(max(0.0, _safe_float(memory_block.get("bank_hits"), default=0.0)))
+    return {
+        "local_hits": local_hits,
+        "bank_hits": bank_hits,
+        "method": str(memory_block.get("method", "") or ""),
+        "has_memory_meta": bool(memory_block),
+    }
+
+
+def _deterministic_case_signal(
+    *,
+    case: Mapping[str, Any],
+    output: Mapping[str, Any],
+    strategy: str,
+) -> dict[str, Any]:
+    expected_intent = str(case.get("expected_intent", "") or "").strip().lower()
+    predicted = _predicted_intent(output, strategy=strategy)
+    intent_match = bool(expected_intent and predicted and predicted == expected_intent)
+    setup_used = bool(_setup_prompt(case))
+    memory = _memory_signal(output, strategy=strategy)
+    memory_recall_hit = bool(int(memory["local_hits"]) > 0 or int(memory["bank_hits"]) > 0)
+    return {
+        "expected_intent": expected_intent,
+        "predicted_intent": predicted,
+        "intent_match": bool(intent_match),
+        "setup_prompt_used": bool(setup_used),
+        "memory_local_hits": int(memory["local_hits"]),
+        "memory_bank_hits": int(memory["bank_hits"]),
+        "memory_recall_hit": bool(memory_recall_hit),
+        "memory_method": str(memory["method"]),
+        "expected_exact": str(case.get("expected_exact", "") or ""),
+    }
 
 
 def _disable_tool_first(app: MoAAPrime) -> None:
@@ -378,7 +548,7 @@ def _run_swarm_with_sfc(
     for round_idx in range(max(1, int(rounds))):
         final_output = app.run_swarm(
             prompt,
-            task_id=f"{task_id}-sfc-r{round_idx + 1}",
+            task_id=task_id,
             mode=mode,
             rounds=1,
             top_k=top_k,
@@ -414,6 +584,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
         category = str(case.get("category", "") or "uncategorized")
         prompt = str(case["prompt"])
         task_id = f"pr5-{config.config_id}-{idx}"
+        setup_prompt = _setup_prompt(case)
 
         app = MoAAPrime(mode=config.mode, seed=seed)
         _apply_agent_toggles(
@@ -424,6 +595,27 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
 
         hints = _memory_hints(config.memory_enabled)
         sfc_meta: dict[str, Any] = {"enabled": False}
+        dual_escalation: dict[str, Any] = {
+            "eligible": False,
+            "should_escalate": False,
+            "below_pass_threshold": False,
+            "baseline_oracle_score": 0.0,
+            "selector_triggered": False,
+            "reasons": [],
+            "confidence": 0.0,
+            "ambiguity": 0.0,
+            "tool_failed": False,
+        }
+
+        if setup_prompt:
+            _prime_case_memory(
+                app,
+                setup_prompt=setup_prompt,
+                task_id=task_id,
+                mode=config.mode,
+                budget_mode=config.budget_mode,
+                memory_hints=hints,
+            )
 
         if config.strategy == "once":
             out = app.run_once(
@@ -465,11 +657,12 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     memory_hints=hints,
                     dual_gate=False,
                 )
-                if _should_escalate_dual_gate(
+                dual_escalation = _dual_gate_escalation_decision(
                     config=config,
                     baseline_output=out,
                     pass_threshold=pass_threshold,
-                ):
+                )
+                if bool(dual_escalation.get("should_escalate", False)):
                     out = app.run_swarm(
                         prompt,
                         task_id=f"{task_id}-dual",
@@ -502,6 +695,16 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
             winner_agent = str(best.get("agent", "") or "")
 
         passed = bool(oracle_score >= pass_threshold)
+        deterministic = _deterministic_case_signal(case=case, output=out, strategy=config.strategy)
+        deterministic_pass = passed
+        if category == "routing_intent" and str(deterministic.get("expected_intent", "") or ""):
+            deterministic_pass = bool(deterministic.get("intent_match", False))
+        elif category == "memory_behavior" and bool(deterministic.get("setup_prompt_used", False)):
+            deterministic_pass = bool(deterministic.get("memory_recall_hit", False))
+            if config.memory_enabled:
+                passed = bool(deterministic_pass)
+            else:
+                passed = False
         rows.append(
             {
                 "case_id": case_id,
@@ -509,11 +712,15 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                 "prompt": prompt,
                 "oracle_score": float(oracle_score),
                 "pass": passed,
+                "deterministic_pass": bool(deterministic_pass),
+                "deterministic": dict(deterministic),
                 "latency_proxy": float(latency_proxy),
                 "tool_verified": bool(tool_verified),
                 "winner_agent": winner_agent,
                 "confidence": float(confidence),
                 "dual_triggered": bool(dual_triggered),
+                "dual_escalated": bool(dual_escalation.get("should_escalate", False)),
+                "dual_escalation": dict(dual_escalation),
                 "sfc": dict(sfc_meta),
             }
         )
@@ -674,6 +881,36 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
     return baseline_run, tool_run
 
 
+def _deterministic_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, float | int]]:
+    def _block(case_rows: Sequence[Mapping[str, Any]]) -> dict[str, float | int]:
+        values = [bool(r.get("deterministic_pass", False)) for r in case_rows]
+        num_cases = int(len(case_rows))
+        passed = int(sum(1 for v in values if v))
+        return {
+            "num_cases": num_cases,
+            "scored_cases": num_cases,
+            "passed": passed,
+            "pass_rate": _pass_rate(values),
+        }
+
+    routing_rows = [
+        row
+        for row in rows
+        if str(row.get("category", "") or "") == "routing_intent"
+        and str((((row.get("deterministic", {}) or {}).get("expected_intent", "")) or "")).strip() != ""
+    ]
+    memory_rows = [
+        row
+        for row in rows
+        if str(row.get("category", "") or "") == "memory_behavior"
+        and bool(((row.get("deterministic", {}) or {}).get("setup_prompt_used", False)))
+    ]
+    return {
+        "routing_intent": _block(routing_rows),
+        "memory_behavior": _block(memory_rows),
+    }
+
+
 def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_threshold: float) -> dict[str, Any]:
     scores = [float(r["oracle_score"]) for r in rows]
     passes = [bool(r["pass"]) for r in rows]
@@ -681,6 +918,7 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
     tool_flags = [bool(r["tool_verified"]) for r in rows]
     counts = _run_counts(rows)
     category_summary = _category_summary(rows)
+    deterministic_checks = _deterministic_summary(rows)
     pass_rate = _pass_rate(passes)
     avg_latency_proxy = _mean(latencies)
     tool_verification_rate = _pass_rate(tool_flags)
@@ -715,6 +953,7 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
         "avg_oracle_score": float(avg_oracle_score),
         "oracle_distribution": dict(oracle_distribution),
         "category_summary": category_summary,
+        "deterministic_checks": deterministic_checks,
         "summary": {
             "counts": dict(counts),
             "metrics": {
@@ -725,6 +964,7 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
                 "tool_verification_rate": float(tool_verification_rate),
             },
             "categories": category_summary,
+            "deterministic_checks": deterministic_checks,
         },
         "cases": rows,
     }

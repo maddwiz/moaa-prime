@@ -292,6 +292,29 @@ class SwarmManager:
 
         return f"{prompt}\n[agent_domain={domain_hint}; round={round_idx + 1}]"
 
+    def _v3_round_policy(self, budget_mode: str) -> Dict[str, float]:
+        profile_map = {
+            "cheap": {
+                "prune_score": 0.82,
+                "prune_margin": 0.05,
+                "min_improvement": 0.010,
+                "stop_score_floor": 0.76,
+            },
+            "balanced": {
+                "prune_score": 0.85,
+                "prune_margin": 0.06,
+                "min_improvement": 0.008,
+                "stop_score_floor": 0.80,
+            },
+            "max_quality": {
+                "prune_score": 0.92,
+                "prune_margin": 0.12,
+                "min_improvement": 0.006,
+                "stop_score_floor": 0.88,
+            },
+        }
+        return dict(profile_map.get(budget_mode, profile_map["balanced"]))
+
     def _build_candidate(
         self,
         *,
@@ -301,6 +324,7 @@ class SwarmManager:
         round_idx: int,
         rank_idx: int,
         mode: str,
+        budget_mode: str = "balanced",
     ) -> Dict[str, Any]:
         call_prompt = self._candidate_prompt(prompt, agent, round_idx, mode)
 
@@ -321,7 +345,13 @@ class SwarmManager:
         contract = getattr(agent, "contract", None)
         cost_prior = float(getattr(contract, "cost_prior", 0.3) or 0.3)
 
-        latency_proxy = float(40 + (4 * token_count) + (8 * rank_idx) + (3 * round_idx) + int(20 * cost_prior))
+        base_latency = float(40 + (4 * token_count) + (8 * rank_idx) + (3 * round_idx) + int(20 * cost_prior))
+        budget_latency_scale = {
+            "cheap": 0.90,
+            "balanced": 1.00,
+            "max_quality": 1.06,
+        }.get(str(budget_mode or "balanced").strip().lower(), 1.00)
+        latency_proxy = float(base_latency * budget_latency_scale)
         cost_proxy = float(16 + token_count + int(42 * cost_prior))
 
         grounding = float((((oracle_block.get("meta", {}) or {}).get("components", {}) or {}).get("grounding", oracle_block["score"])))
@@ -758,19 +788,78 @@ class SwarmManager:
             budget_mode=budget_mode,
         )
 
+        requested_rounds = int(max(1, rounds))
+        requested_top_k = int(max(1, top_k))
+        round_policy = self._v3_round_policy(budget_mode) if chosen_mode == "v3" else {}
+
         candidates: List[Dict[str, Any]] = []
-        for round_idx in range(max(1, int(rounds))):
-            for rank_idx, agent in enumerate(agents):
-                candidates.append(
-                    self._build_candidate(
-                        agent=agent,
-                        prompt=prompt,
-                        task_id=task_id,
-                        round_idx=round_idx,
-                        rank_idx=rank_idx,
-                        mode=chosen_mode,
-                    )
+        active_agents = list(agents)
+        executed_rounds = 0
+        stopped_early = False
+        stop_reason = "requested-rounds-complete"
+        pruned_to_top1_round: Optional[int] = None
+        best_score_so_far: Optional[float] = None
+
+        for round_idx in range(requested_rounds):
+            if not active_agents:
+                stop_reason = "no-active-agents"
+                break
+
+            round_agents = list(active_agents)
+            round_candidates: List[Dict[str, Any]] = []
+            for rank_idx, agent in enumerate(round_agents):
+                candidate = self._build_candidate(
+                    agent=agent,
+                    prompt=prompt,
+                    task_id=task_id,
+                    round_idx=round_idx,
+                    rank_idx=rank_idx,
+                    mode=chosen_mode,
+                    budget_mode=budget_mode,
                 )
+                candidates.append(candidate)
+                round_candidates.append(candidate)
+
+            executed_rounds = int(round_idx + 1)
+
+            if chosen_mode != "v3" or requested_rounds <= 1:
+                continue
+
+            round_ranked = sorted(round_candidates, key=self._oracle_score, reverse=True)
+            round_best = round_ranked[0]
+            round_best_score = self._oracle_score(round_best)
+            round_second_score = self._oracle_score(round_ranked[1]) if len(round_ranked) > 1 else round_best_score
+            round_margin = _clamp(round_best_score - round_second_score, 0.0, 1.0)
+
+            improvement = None if best_score_so_far is None else float(round_best_score - best_score_so_far)
+            if best_score_so_far is None or round_best_score > best_score_so_far:
+                best_score_so_far = float(round_best_score)
+
+            if round_idx + 1 >= requested_rounds:
+                continue
+
+            if len(round_agents) > 1:
+                prune_score = float(round_policy.get("prune_score", 1.01))
+                prune_margin = float(round_policy.get("prune_margin", 1.01))
+                if round_best_score >= prune_score and round_margin >= prune_margin:
+                    winner_local_idx = round_candidates.index(round_best)
+                    active_agents = [round_agents[winner_local_idx]]
+                    if pruned_to_top1_round is None:
+                        pruned_to_top1_round = int(round_idx + 1)
+                else:
+                    active_agents = list(round_agents)
+
+            min_improvement = float(round_policy.get("min_improvement", -1.0))
+            stop_score_floor = float(round_policy.get("stop_score_floor", 1.01))
+            if (
+                round_idx >= 1
+                and improvement is not None
+                and improvement <= min_improvement
+                and round_best_score >= stop_score_floor
+            ):
+                stopped_early = True
+                stop_reason = "diminishing-returns"
+                break
 
         cross_meta = {"enabled": False, "status": "disabled"}
         pareto_meta = {"enabled": False, "status": "not-used", "frontier": []}
@@ -796,14 +885,20 @@ class SwarmManager:
             ),
             "swarm": {
                 "mode": chosen_mode,
-                "rounds": int(max(1, rounds)),
-                "top_k": int(max(1, top_k)),
+                "rounds": int(requested_rounds),
+                "rounds_executed": int(executed_rounds),
+                "top_k": int(requested_top_k),
                 "num_candidates": int(len(candidates)),
                 "cross_check": cross_meta,
                 "pareto": pareto_meta,
                 "budget_mode": budget_mode,
                 "tool_verification": tool_verification_meta,
                 "tool_verification_rate": float(tool_verification_meta.get("verification_rate", 0.0)),
+                "round_control": {
+                    "stopped_early": bool(stopped_early),
+                    "stop_reason": str(stop_reason),
+                    "pruned_to_top1_round": int(pruned_to_top1_round or 0),
+                },
             },
             "oracle": {
                 "mode": "oracle_v2" if chosen_mode in {"v2", "v3"} else "oracle_v1",

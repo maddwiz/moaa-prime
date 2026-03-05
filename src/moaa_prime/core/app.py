@@ -325,21 +325,37 @@ class MoAAPrime:
             swarm_trace["dual_gate"] = dual_trace
             return
 
-        dual_candidate = self._build_dual_candidate(
-            prompt=prompt,
-            run_mode=run_mode,
-            single_candidate=best_candidate,
-        )
-
         ranked_scores = self._ranked_router_scores(out)
         best_meta = best_candidate.get("meta") if isinstance(best_candidate.get("meta"), Mapping) else {}
-        selection = selector.run(
-            single={**best_candidate, "label": "single"},
-            dual={**dual_candidate, "label": "dual"},
-            confidence=self._safe_float(out.get("confidence"), default=0.0),
+        confidence = self._safe_float(out.get("confidence"), default=0.0)
+        precheck = selector.evaluate_trigger(
+            confidence=confidence,
             ranked_scores=ranked_scores,
             answer_metadata=best_meta,
         )
+
+        dual_candidate: Optional[Dict[str, Any]] = None
+        if precheck.should_trigger:
+            dual_candidate = self._build_dual_candidate(
+                prompt=prompt,
+                run_mode=run_mode,
+                single_candidate=best_candidate,
+            )
+            selection = selector.run(
+                single={**best_candidate, "label": "single"},
+                dual={**dual_candidate, "label": "dual"},
+                confidence=confidence,
+                ranked_scores=ranked_scores,
+                answer_metadata=best_meta,
+            )
+        else:
+            selection = selector.run(
+                single={**best_candidate, "label": "single"},
+                dual=None,
+                confidence=confidence,
+                ranked_scores=ranked_scores,
+                answer_metadata=best_meta,
+            )
 
         dual_trace.update(
             {
@@ -364,11 +380,11 @@ class MoAAPrime:
                     if isinstance(row, Mapping):
                         candidate_rows.append(dict(row))
             has_dual = any(str(c.get("agent", "")) == "dual-brain" for c in candidate_rows)
-            if not has_dual:
+            if dual_candidate is not None and not has_dual:
                 candidate_rows.append(dual_candidate)
             out["candidates"] = candidate_rows
 
-        if selection.winner.label == "dual":
+        if selection.winner.label == "dual" and dual_candidate is not None:
             out["best"] = dual_candidate
             out["confidence"] = max(
                 self._safe_float(out.get("confidence"), default=0.0),
