@@ -112,6 +112,8 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     assert REQUIRED_CONFIG_IDS.issubset(set(matrix["config_ids"]))
     expected_case_count = len(CORE_EVAL_CASES)
     expected_category_counts = Counter(str(case["category"]) for case in CORE_EVAL_CASES)
+    expected_routing_cases = int(expected_category_counts["routing_intent"])
+    expected_memory_cases = int(expected_category_counts["memory_behavior"])
     assert run_index["baseline_single"]["num_cases"] == expected_case_count
     assert run_index["swarm"]["num_cases"] == expected_case_count
     assert run_index["dual_gated"]["num_cases"] == expected_case_count
@@ -126,8 +128,10 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     assert run_index["dual_gated"]["avg_latency_proxy"] < 50.0
     assert run_index["swarm"]["pass_rate"] >= run_index["baseline_single"]["pass_rate"]
     assert run_index["dual_gated"]["pass_rate"] >= run_index["swarm"]["pass_rate"]
-    assert run_index["swarm"]["deterministic_checks"]["routing_intent"]["num_cases"] > 0
-    assert run_index["swarm"]["deterministic_checks"]["memory_behavior"]["num_cases"] > 0
+    assert run_index["swarm"]["deterministic_checks"]["routing_intent"]["num_cases"] == expected_routing_cases
+    assert run_index["dual_gated"]["deterministic_checks"]["routing_intent"]["num_cases"] == expected_routing_cases
+    assert run_index["swarm"]["deterministic_checks"]["memory_behavior"]["num_cases"] == expected_memory_cases
+    assert run_index["dual_gated"]["deterministic_checks"]["memory_behavior"]["num_cases"] == expected_memory_cases
     dual_trigger_flags = [bool(row.get("dual_triggered", False)) for row in run_index["dual_gated"]["cases"]]
     assert not all(dual_trigger_flags)
 

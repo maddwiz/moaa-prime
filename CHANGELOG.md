@@ -2,6 +2,33 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 004E — 42-case deterministic breadth + lower swarm/dual latency proxy
+- Expanded shared deterministic core eval catalog from 36 to 42 cases in:
+  - `src/moaa_prime/eval/cases.py`
+  - now balanced at 7 cases per required category:
+    - `math`
+    - `code`
+    - `reasoning`
+    - `safety`
+    - `routing_intent`
+    - `memory_behavior`
+- Added additional deterministic intent/memory coverage:
+  - new routing case with `expected_intent`
+  - new memory case with `setup_prompt` + `expected_exact`
+- Improved dual-gate eval parity for memory behavior in:
+  - `scripts/eval_dual_gate.py`
+  - memory setup prompts are now primed before baseline and gated runs for each case.
+- Tuned matrix latency proxy for latency-critical modes in:
+  - `scripts/eval_matrix.py`
+  - reduced `cheap` fast-path profile (`base`, `per_token`, `floor`)
+  - reduced dual-trigger surcharge in fast-path estimation
+  - expected effect: lower `avg_latency_proxy` for `swarm` and `dual_gated` with pass-rate non-regression.
+- Tightened deterministic test assertions:
+  - `tests/test_pr5_eval_cases_catalog.py`
+    - catalog floor now validates >= 42 cases and >= 7 per category.
+  - `tests/test_pr5_eval_matrix_script.py`
+    - deterministic routing/memory check counts now match exact category totals.
+
 ## Cycle 004D — 36-case eval breadth + swarm latency controls
 - Expanded shared core eval catalog from 30 to 36 deterministic cases in:
   - `src/moaa_prime/eval/cases.py`

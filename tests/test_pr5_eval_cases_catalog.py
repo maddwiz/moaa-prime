@@ -6,7 +6,7 @@ from moaa_prime.eval.cases import CATEGORY_ORDER, CORE_EVAL_CASES
 
 
 def test_pr5_core_eval_cases_catalog_shape_is_deterministic() -> None:
-    assert len(CORE_EVAL_CASES) >= 36
+    assert len(CORE_EVAL_CASES) >= 42
 
     ids = [str(case["id"]) for case in CORE_EVAL_CASES]
     prompts = [str(case["prompt"]) for case in CORE_EVAL_CASES]
@@ -21,7 +21,7 @@ def test_pr5_core_eval_cases_catalog_balances_required_categories() -> None:
     counts = Counter(str(case["category"]) for case in CORE_EVAL_CASES)
     expected = set(CATEGORY_ORDER)
     assert set(counts.keys()) == expected
-    assert all(counts[category] >= 6 for category in CATEGORY_ORDER)
+    assert all(counts[category] >= 7 for category in CATEGORY_ORDER)
 
 
 def test_pr5_core_eval_cases_catalog_exposes_routing_and_memory_deterministic_fields() -> None:

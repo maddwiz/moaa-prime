@@ -256,7 +256,7 @@ def _estimate_swarm_fast_path_latency(
     token_count = max(1, len(text.split()))
 
     profile = {
-        "cheap": {"base": 10.5, "per_token": 1.0, "floor": 14.0},
+        "cheap": {"base": 9.5, "per_token": 0.92, "floor": 13.0},
         "balanced": {"base": 15.0, "per_token": 1.6, "floor": 19.0},
         "max_quality": {"base": 18.0, "per_token": 1.9, "floor": 22.0},
     }.get(str(budget_mode or "balanced").strip().lower(), {"base": 15.0, "per_token": 1.6, "floor": 19.0})
@@ -271,7 +271,7 @@ def _estimate_swarm_fast_path_latency(
     if tool_verified:
         fast_path -= 1.0
     if dual_triggered:
-        fast_path += 1.0
+        fast_path += 0.5
     else:
         fast_path -= 0.5
 

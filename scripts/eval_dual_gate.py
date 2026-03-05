@@ -20,6 +20,23 @@ DUAL_GATE_CONFIG: dict[str, float] = {
     "high_ambiguity_threshold": 0.85,
 }
 
+
+def _setup_prompt(case: dict[str, object]) -> str:
+    return str(case.get("setup_prompt", "") or "").strip()
+
+
+def _prime_case_memory(app: MoAAPrime, *, setup_prompt: str, task_id: str) -> None:
+    if not setup_prompt:
+        return
+    app.run_once(
+        setup_prompt,
+        task_id=f"{task_id}-setup",
+        mode="v3",
+        budget={"mode": "balanced"},
+        memory_hints={"default": 0.8, "math-agent": 0.75, "code-agent": 0.75},
+    )
+
+
 def _oracle_score(payload: dict[str, object]) -> float:
     best = payload.get("best", {}) or {}
     if not isinstance(best, dict):
@@ -97,6 +114,10 @@ def main() -> int:
         category = str(case.get("category", "") or "uncategorized")
         baseline_app = MoAAPrime(mode="v3", seed=seed)
         gated_app = MoAAPrime(mode="v3", seed=seed)
+        setup_prompt = _setup_prompt(case)
+        if setup_prompt:
+            _prime_case_memory(baseline_app, setup_prompt=setup_prompt, task_id=f"pr4-baseline-{idx}")
+            _prime_case_memory(gated_app, setup_prompt=setup_prompt, task_id=f"pr4-gated-{idx}")
 
         baseline = baseline_app.run_swarm(
             str(case["prompt"]),

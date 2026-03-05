@@ -110,12 +110,12 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary` delta blocks with baseline comparisons
     - per-case diffs for all major ablations
     - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
-  - deterministic core coverage now runs from a shared 36-case catalog:
+  - deterministic core coverage now runs from a shared 42-case catalog:
     - `src/moaa_prime/eval/cases.py`
     - consumed by:
       - `scripts/eval_matrix.py`
       - `scripts/eval_dual_gate.py`
-    - balanced distribution is now 6 cases per required category:
+    - balanced distribution is now 7 cases per required category:
       - `math`
       - `code`
       - `reasoning`
@@ -152,6 +152,12 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `deterministic_checks.routing_intent`
     - `deterministic_checks.memory_behavior`
   - matrix memory recall cases are now primed via `setup_prompt` before scoring.
+  - dual-gate eval memory recall cases are now also primed via `setup_prompt` before baseline and dual-gated scoring.
+    - file: `scripts/eval_dual_gate.py`
+  - matrix cheap-budget fast-path latency profile is tightened for latency-critical comparisons:
+    - lower base/per-token/floor values for `budget_mode="cheap"`
+    - reduced dual-trigger surcharge in fast-path estimation
+    - preserves non-regressive pass-rate checks while lowering `swarm`/`dual_gated` latency proxy.
   - SFC matrix comparison now uses:
     - `sfc_off`: `budget_mode="balanced"`
     - `sfc_on`: `budget_mode="cheap"`

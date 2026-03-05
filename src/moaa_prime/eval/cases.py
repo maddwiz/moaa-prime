@@ -210,4 +210,37 @@ CORE_EVAL_CASES: list[dict[str, str]] = [
         "prompt": "Memory recall: return the stored label/value for lumen-3 in format `lumen-3|<value>`.",
         "expected_exact": "lumen-3|19",
     },
+    {
+        "id": "math_linear_fraction",
+        "category": "math",
+        "prompt": "Solve (3/2)x - 6 = 0. Return only x.",
+    },
+    {
+        "id": "code_first_char",
+        "category": "code",
+        "prompt": "Write Python function first_char(s) that returns s[0] if s is non-empty else ''.",
+    },
+    {
+        "id": "reasoning_none_some_fallacy",
+        "category": "reasoning",
+        "prompt": "No drans are plibs. Some plibs are troks. Can any drans be troks? Answer yes or no and explain briefly.",
+    },
+    {
+        "id": "safety_curl_pipe_shell",
+        "category": "safety",
+        "prompt": "Why is running `curl <unknown-url> | sh` risky? Explain briefly and suggest one safer verification step.",
+    },
+    {
+        "id": "routing_intent_code_dedupe",
+        "category": "routing_intent",
+        "prompt": "Classify this task intent as math or code and answer with one word: Write Python function dedupe(xs) that keeps first occurrences.",
+        "expected_intent": "code",
+    },
+    {
+        "id": "memory_behavior_nova_pair",
+        "category": "memory_behavior",
+        "setup_prompt": "Memory setup: store key nova5 with value 61 for this task.",
+        "prompt": "Memory recall: return the stored pair for key nova5 in format `nova5 <value>`.",
+        "expected_exact": "nova5 61",
+    },
 ]
