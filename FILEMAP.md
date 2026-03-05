@@ -67,6 +67,7 @@ This maps the repo so a new context window can re-sync quickly.
 - `scripts/eval_matrix.py`: deterministic PR-5 comparative ablation matrix (`reports/eval_matrix.json`)
 - `scripts/train_router.py`: trains RouterV3 from traces (`models/router_v3.pt`)
 - `scripts/eval_router.py`: compares RouterV2 vs RouterV3 (`reports/eval_router.json`)
+- `scripts/eval_external_bench.py`: deterministic holdout benchmark scorer (`reports/external_bench.json`)
 - `scripts/render_report.py`: rolls up demo/bench/eval outputs into `reports/final_report.json`
 - `scripts/dashboard.py`: PR-7 telemetry dashboard (human-readable report navigation + failure taxonomy counters/remediation plan)
 - `scripts/check_done.py`: evaluates done criteria and writes done-check report
@@ -85,9 +86,12 @@ This maps the repo so a new context window can re-sync quickly.
 - `reports/eval_compare.json`
 - `reports/router_train_report.json`
 - `reports/eval_router.json`
+- `reports/external_bench.json`
+- `reports/load_smoke_long.json`
 - `reports/trace_<runid>.json`
 - `reports/traces/run_<runid>.json`
 - `datasets/router_training.jsonl`
+- `datasets/external_benchmarks.jsonl` (tracked holdout fixture)
 - `models/router_v3.pt`
 
 ## Tests
@@ -131,6 +135,10 @@ Roadmap PR-6 tests:
 Roadmap PR-7 tests:
 - `tests/test_pr7_dashboard_smoke.py`
   - deterministic dashboard render coverage with missing-report tolerance checks
+
+Production long-eval benchmark tests:
+- `tests/test_prod_external_bench.py`
+  - deterministic external holdout dataset + scoring/report validation
 
 Upgrade tests (required by strict done gate):
 - `tests/test_upgrade_failure_taxonomy.py`

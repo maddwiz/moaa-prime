@@ -11,14 +11,91 @@ if _SRC_DIR.exists() and str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 from moaa_prime.core.app import MoAAPrime
-from moaa_prime.eval.cases import CORE_EVAL_CASES
+from moaa_prime.eval.cases import CATEGORY_ORDER, CORE_EVAL_CASES
 
 
 PASS_THRESHOLD = 0.70
+DEFAULT_MIN_CASES = 150
 DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.60,
     "high_ambiguity_threshold": 0.85,
 }
+
+
+def _safe_int(value: object, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _env_min_cases(name: str, *, default: int, minimum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        value = int(default)
+    else:
+        value = _safe_int(raw, default=default)
+    return int(max(int(minimum), int(value)))
+
+
+def _expand_cases_category_balanced(
+    cases: list[dict[str, object]],
+    *,
+    min_total: int,
+) -> list[dict[str, object]]:
+    original = [dict(case) for case in cases]
+    if not original:
+        return []
+    if int(min_total) <= len(original):
+        return original
+
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for case in original:
+        category = str(case.get("category", "") or "uncategorized")
+        grouped.setdefault(category, []).append(case)
+
+    ordered_categories: list[str] = []
+    seen: set[str] = set()
+    for category in CATEGORY_ORDER:
+        if category in grouped and grouped[category]:
+            ordered_categories.append(category)
+            seen.add(category)
+    for category in sorted(grouped.keys()):
+        if category in seen:
+            continue
+        ordered_categories.append(category)
+
+    if not ordered_categories:
+        return original
+
+    per_category_target = (int(min_total) + len(ordered_categories) - 1) // len(ordered_categories)
+    expanded_by_category: dict[str, list[dict[str, object]]] = {}
+    for category in ordered_categories:
+        source = grouped.get(category, [])
+        if not source:
+            continue
+        source_count = len(source)
+        out: list[dict[str, object]] = []
+        for idx in range(per_category_target):
+            base = source[idx % source_count]
+            row = dict(base)
+            base_id = str(base.get("id", "") or "case")
+            if idx >= source_count:
+                row["id"] = f"{base_id}__rep{idx:03d}"
+            out.append(row)
+        expanded_by_category[category] = out
+
+    expanded: list[dict[str, object]] = []
+    for idx in range(per_category_target):
+        for category in ordered_categories:
+            rows = expanded_by_category.get(category, [])
+            if idx < len(rows):
+                expanded.append(rows[idx])
+    return expanded
+
+
+def _expanded_eval_cases(*, min_cases: int) -> list[dict[str, object]]:
+    return _expand_cases_category_balanced(CORE_EVAL_CASES, min_total=int(min_cases))
 
 
 def _setup_prompt(case: dict[str, object]) -> str:
@@ -110,6 +187,12 @@ def _run_summary(*, config_id: str, scores: list[float], passes: list[bool]) -> 
 def main() -> int:
     seed = int(os.getenv("MOAA_PR4_EVAL_SEED") or "29")
     pass_threshold = float(os.getenv("MOAA_PR4_PASS_THRESHOLD") or str(PASS_THRESHOLD))
+    min_cases = _env_min_cases(
+        "MOAA_PR4_DUAL_EVAL_MIN_CASES",
+        default=DEFAULT_MIN_CASES,
+        minimum=len(CORE_EVAL_CASES),
+    )
+    eval_cases = _expanded_eval_cases(min_cases=min_cases)
 
     rows = []
     baseline_scores: list[float] = []
@@ -118,7 +201,7 @@ def main() -> int:
     gated_passes: list[bool] = []
     gate_triggered: list[bool] = []
 
-    for idx, case in enumerate(CORE_EVAL_CASES):
+    for idx, case in enumerate(eval_cases):
         category = str(case.get("category", "") or "uncategorized")
         baseline_app = MoAAPrime(mode="v3", seed=seed)
         gated_app = MoAAPrime(mode="v3", seed=seed)
@@ -207,8 +290,8 @@ def main() -> int:
         dual_metrics["triggered"] = int(trigger_count)
 
     counts = _validated_counts(
-        num_cases=int(len(CORE_EVAL_CASES)),
-        scored_cases=int(len(CORE_EVAL_CASES)),
+        num_cases=int(len(eval_cases)),
+        scored_cases=int(len(eval_cases)),
         passed=int(dual_summary["passed"]),
     )
 

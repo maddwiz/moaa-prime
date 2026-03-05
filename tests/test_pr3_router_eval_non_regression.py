@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+
+
+def _load_eval_router_module():
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "eval_router.py"
+    spec = importlib.util.spec_from_file_location("eval_router_script", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_pr3_eval_router_reports_v3_non_regression_vs_v2(tmp_path) -> None:
@@ -47,3 +58,18 @@ def test_pr3_eval_router_reports_v3_non_regression_vs_v2(tmp_path) -> None:
     assert non_regression["routing_accuracy"]["passed"] is True
     assert non_regression["oracle_score_gain"]["passed"] is True
     assert non_regression["passed"] is True
+
+
+def test_pr3_eval_router_default_expansion_meets_longeval_volume(monkeypatch) -> None:
+    module = _load_eval_router_module()
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root)
+    monkeypatch.delenv("MOAA_ROUTER_EVAL_CASES_PATH", raising=False)
+
+    base_cases = module._load_cases()
+    expanded_1 = module._expand_eval_cases(base_cases, min_cases=module.DEFAULT_MIN_CASES)
+    expanded_2 = module._expand_eval_cases(base_cases, min_cases=module.DEFAULT_MIN_CASES)
+
+    assert len(expanded_1) >= 50
+    assert [case.case_id for case in expanded_1] == [case.case_id for case in expanded_2]
+    assert len({case.case_id for case in expanded_1}) == len(expanded_1)

@@ -5,9 +5,6 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from moaa_prime.eval.cases import CORE_EVAL_CASES
-
-
 REQUIRED_CONFIG_IDS = {
     "baseline_single",
     "swarm",
@@ -86,8 +83,11 @@ def _assert_count_triplet(block: dict, *, counts_key: str | None = "counts") -> 
 
 
 def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOAA_PR5_MATRIX_MIN_CORE_CASES", "72")
+    monkeypatch.setenv("MOAA_PR5_MATRIX_MIN_TOOL_CASES", "12")
     monkeypatch.chdir(tmp_path)
     module = _load_eval_matrix_module()
+    expected_core_cases = module._expanded_core_cases(min_cases=72)
 
     exit_code_1 = module.main()
     report_path = tmp_path / "reports" / "eval_matrix.json"
@@ -127,8 +127,8 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
             _assert_count_triplet(deterministic_block, counts_key=None)
 
     assert REQUIRED_CONFIG_IDS.issubset(set(matrix["config_ids"]))
-    expected_case_count = len(CORE_EVAL_CASES)
-    expected_category_counts = Counter(str(case["category"]) for case in CORE_EVAL_CASES)
+    expected_case_count = len(expected_core_cases)
+    expected_category_counts = Counter(str(case["category"]) for case in expected_core_cases)
     expected_routing_cases = int(expected_category_counts["routing_intent"])
     expected_memory_cases = int(expected_category_counts["memory_behavior"])
     assert run_index["baseline_single"]["num_cases"] == expected_case_count
@@ -198,3 +198,20 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     _assert_count_triplet(compat_tool_1["code"], counts_key=None)
     assert compat_tool_1["overall"]["num_cases"] >= compat_tool_1["overall"]["passed"] >= 0
     assert compat_tool_1["overall"]["scored_cases"] == compat_tool_1["overall"]["num_cases"]
+
+
+def test_pr5_eval_matrix_default_expansion_meets_longeval_volume() -> None:
+    module = _load_eval_matrix_module()
+    core_cases = module._expanded_core_cases(min_cases=module.DEFAULT_CORE_MIN_CASES)
+    math_cases, code_cases = module._expanded_tool_first_cases(min_cases=module.DEFAULT_TOOL_FIRST_MIN_CASES)
+
+    assert len(core_cases) >= 150
+    category_counts = Counter(str(case["category"]) for case in core_cases)
+    assert REQUIRED_CATEGORIES.issubset(set(category_counts))
+    assert max(category_counts.values()) - min(category_counts.values()) <= 1
+
+    tool_total = len(math_cases) + len(code_cases)
+    assert tool_total >= module.DEFAULT_TOOL_FIRST_MIN_CASES
+
+    matrix_total = (len(module.CORE_CONFIGS) * len(core_cases)) + (2 * tool_total)
+    assert matrix_total >= 1200

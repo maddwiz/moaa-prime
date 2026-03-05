@@ -17,10 +17,12 @@ Run these commands in order from repo root:
 1. `pytest -q`
 2. `python scripts/eval_matrix.py`
 3. `python scripts/eval_router.py`
-4. `python scripts/eval_dual_gate.py`
-5. `python scripts/preflight_prod.py --output reports/preflight_prod.json`
-6. `python scripts/load_smoke.py --output reports/load_smoke.json --iters 50`
-7. `python scripts/check_done.py --criteria .codex/done_criteria.production.json`
+4. `python scripts/eval_compare.py`
+5. `python scripts/eval_dual_gate.py`
+6. `python scripts/eval_external_bench.py --output reports/external_bench.json`
+7. `python scripts/preflight_prod.py --output reports/preflight_prod.json`
+8. `python scripts/load_smoke.py --output reports/load_smoke.json --iters 50`
+9. `python scripts/check_done.py --criteria .codex/done_criteria.production.json`
 
 Expected result:
 - Final command returns DONE and all previous commands exit successfully.
@@ -36,6 +38,24 @@ Smoke pass criteria:
 - `reports/load_smoke.json` has:
   - `metrics.error_rate <= 0.01`
   - `metrics.p95_latency_ms <= 2500`
+
+## Long-Eval Procedure
+Use this sequence for production campaign/soak verification:
+
+1. `python scripts/eval_matrix.py`
+2. `python scripts/eval_router.py`
+3. `python scripts/eval_compare.py`
+4. `python scripts/eval_dual_gate.py`
+5. `python scripts/eval_external_bench.py --output reports/external_bench.json`
+6. `python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 500`
+7. `python scripts/check_done.py --criteria .codex/done_criteria.longevals.json`
+
+Long-eval pass criteria:
+- matrix counts: `summary.counts.num_cases >= 1200`
+- router/compare counts: `>= 50`
+- dual baseline counts: `>= 150`
+- external holdout: `counts.num_cases >= 100` and `metrics.pass_rate >= 0.75`
+- long smoke: `request_count >= 500`, `error_rate <= 0.01`, `p95_latency_ms <= 2500`
 
 ## Release Procedure
 Release is manual by design to keep control explicit.

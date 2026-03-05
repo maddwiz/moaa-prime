@@ -16,6 +16,7 @@ def _load_eval_compare_module():
 
 
 def test_pr5_eval_compare_schema_is_stable_and_non_null(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOAA_EVAL_COMPARE_MIN_CASES", "3")
     monkeypatch.chdir(tmp_path)
     module = _load_eval_compare_module()
 
@@ -60,3 +61,18 @@ def test_pr5_eval_compare_schema_is_stable_and_non_null(tmp_path, monkeypatch) -
     assert isinstance(payload_1["cases"], list)
     assert payload_1["cases"]
     assert isinstance(payload_1["trace_paths"], list)
+
+
+def test_pr5_eval_compare_default_expansion_meets_longeval_volume(monkeypatch) -> None:
+    module = _load_eval_compare_module()
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root)
+    monkeypatch.delenv("MOAA_EVAL_SLICE", raising=False)
+
+    base_cases = module._load_cases()
+    expanded_1 = module._expand_eval_cases(base_cases, min_cases=module.DEFAULT_MIN_CASES)
+    expanded_2 = module._expand_eval_cases(base_cases, min_cases=module.DEFAULT_MIN_CASES)
+
+    assert len(expanded_1) >= 50
+    assert [case.case_id for case in expanded_1] == [case.case_id for case in expanded_2]
+    assert len({case.case_id for case in expanded_1}) == len(expanded_1)

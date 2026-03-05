@@ -34,6 +34,9 @@ data/
 datasets/
 models/
 checkpoints/
+!datasets/
+datasets/*
+!datasets/external_benchmarks.jsonl
 
 # Generated demo outputs
 reports/

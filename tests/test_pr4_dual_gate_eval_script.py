@@ -5,9 +5,6 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from moaa_prime.eval.cases import CORE_EVAL_CASES
-
-
 REQUIRED_CATEGORIES = {
     "math",
     "code",
@@ -46,8 +43,10 @@ def _load_eval_dual_gate_module():
 
 
 def test_pr4_eval_dual_gate_script_emits_deterministic_non_regression(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOAA_PR4_DUAL_EVAL_MIN_CASES", "60")
     monkeypatch.chdir(tmp_path)
     module = _load_eval_dual_gate_module()
+    expected_cases = module._expanded_eval_cases(min_cases=60)
 
     exit_code_1 = module.main()
     report_path = tmp_path / "reports" / "dual_gated_eval.json"
@@ -63,10 +62,10 @@ def test_pr4_eval_dual_gate_script_emits_deterministic_non_regression(tmp_path, 
     assert payload_1["schema_version"] == "1.1"
     _assert_count_triplet(payload_1)
     assert isinstance(payload_1["pass_rate"], float)
-    assert payload_1["num_cases"] == len(CORE_EVAL_CASES)
+    assert payload_1["num_cases"] == len(expected_cases)
     categories = {str(row.get("category", "")) for row in payload_1["cases"]}
     assert REQUIRED_CATEGORIES.issubset(categories)
-    expected_counts = Counter(str(row["category"]) for row in CORE_EVAL_CASES)
+    expected_counts = Counter(str(row["category"]) for row in expected_cases)
     observed_counts = Counter(str(row.get("category", "")) for row in payload_1["cases"])
     assert observed_counts == expected_counts
 
@@ -87,3 +86,13 @@ def test_pr4_eval_dual_gate_script_emits_deterministic_non_regression(tmp_path, 
     assert isinstance(dual["oracle_delta_vs_baseline"], float)
     assert isinstance(dual["trigger_rate"], float)
     assert 0.0 <= dual["trigger_rate"] < 1.0
+
+
+def test_pr4_eval_dual_gate_default_expansion_meets_longeval_volume() -> None:
+    module = _load_eval_dual_gate_module()
+    expanded = module._expanded_eval_cases(min_cases=module.DEFAULT_MIN_CASES)
+    category_counts = Counter(str(row["category"]) for row in expanded)
+
+    assert len(expanded) >= 150
+    assert REQUIRED_CATEGORIES.issubset(set(category_counts))
+    assert max(category_counts.values()) - min(category_counts.values()) <= 1

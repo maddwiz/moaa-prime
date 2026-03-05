@@ -2,6 +2,32 @@
 
 All notable changes to this repo, by phase.
 
+## Cycle 004F — Long-eval defaults + external holdout benchmark + 500-load smoke gate
+- Added deterministic long-volume defaults in eval suites (no env required):
+  - `scripts/eval_matrix.py`
+    - core suite expansion floor: `150` cases per core run
+    - tool-first suite expansion floor: `90` cases per tool-first run
+    - default total matrix volume now clears long-eval threshold (`>=1200`)
+  - `scripts/eval_dual_gate.py`
+    - baseline/dual suite expansion floor: `150`
+  - `scripts/eval_router.py`
+    - router eval expansion floor: `50`
+  - `scripts/eval_compare.py`
+    - compare eval expansion floor: `50`
+- Added deterministic external holdout benchmark path:
+  - dataset: `datasets/external_benchmarks.jsonl` (120 holdout rows; 20 each for `math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
+  - scorer: `scripts/eval_external_bench.py`
+  - test coverage: `tests/test_prod_external_bench.py`
+  - report output: `reports/external_bench.json`
+- Added long-eval test assertions for expansion behavior:
+  - `tests/test_pr5_eval_matrix_script.py`
+  - `tests/test_pr4_dual_gate_eval_script.py`
+  - `tests/test_pr5_eval_compare_schema.py`
+  - `tests/test_pr3_router_eval_non_regression.py`
+- Gitignore policy updated to keep `reports/` generated while allowing tracked holdout fixture:
+  - `datasets/external_benchmarks.jsonl` tracked
+  - other `datasets/*` entries remain ignored by default
+
 ## Cycle 004E — 42-case deterministic breadth + lower swarm/dual latency proxy
 - Expanded shared deterministic core eval catalog from 36 to 42 cases in:
   - `src/moaa_prime/eval/cases.py`

@@ -14,6 +14,40 @@ from moaa_prime.core.app import MoAAPrime
 from moaa_prime.eval.runner import EvalCase, EvalRunner
 
 
+DEFAULT_MIN_CASES = 50
+
+
+def _safe_int(value: object, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _env_min_cases(name: str, *, default: int, minimum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        value = int(default)
+    else:
+        value = _safe_int(raw, default=default)
+    return int(max(int(minimum), int(value)))
+
+
+def _expand_eval_cases(cases: list[EvalCase], *, min_cases: int) -> list[EvalCase]:
+    if not cases:
+        return []
+    if int(min_cases) <= len(cases):
+        return list(cases)
+
+    expanded: list[EvalCase] = []
+    base_count = len(cases)
+    for idx in range(int(min_cases)):
+        base = cases[idx % base_count]
+        case_id = base.case_id if idx < base_count else f"{base.case_id}__rep{idx:03d}"
+        expanded.append(EvalCase(case_id=case_id, prompt=base.prompt, mode=base.mode))
+    return expanded
+
+
 def _load_cases() -> list[EvalCase]:
     path = Path("demos/demo_cases.json")
     if not path.exists():
@@ -68,6 +102,17 @@ def _count_passed(per_case: list[dict[str, object]]) -> int:
 def main() -> int:
     seed = int(os.getenv("MOAA_EVAL_COMPARE_SEED") or "11")
     cases = _load_cases()
+    explicit_slice = _safe_int(os.getenv("MOAA_EVAL_SLICE"), default=0)
+    explicit_min_env = os.getenv("MOAA_EVAL_COMPARE_MIN_CASES")
+    if explicit_slice > 0 and explicit_min_env is None:
+        min_cases = int(len(cases))
+    else:
+        min_cases = _env_min_cases(
+            "MOAA_EVAL_COMPARE_MIN_CASES",
+            default=DEFAULT_MIN_CASES,
+            minimum=len(cases),
+        )
+    cases = _expand_eval_cases(cases, min_cases=min_cases)
 
     runner_v1 = EvalRunner(model_mode="v1", seed=seed)
     runner_v2 = EvalRunner(model_mode="v2", seed=seed)

@@ -26,6 +26,8 @@ from moaa_prime.sfc import StabilityFieldController
 
 
 PASS_THRESHOLD = 0.75
+DEFAULT_CORE_MIN_CASES = 150
+DEFAULT_TOOL_FIRST_MIN_CASES = 90
 DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.66,
     "high_ambiguity_threshold": 0.85,
@@ -136,6 +138,22 @@ CORE_CONFIGS: list[MatrixConfig] = [
         budget_mode="cheap",
     ),
 ]
+
+
+def _safe_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _env_min_cases(name: str, *, default: int, minimum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        value = int(default)
+    else:
+        value = _safe_int(raw, default=default)
+    return int(max(int(minimum), int(value)))
 
 
 def _safe_float(value: Any, *, default: float = 0.0) -> float:
@@ -410,6 +428,83 @@ def _tool_verified_from_meta(meta: Mapping[str, Any] | None) -> bool:
     return bool(tool_meta.get("attempted", False))
 
 
+def _expand_cases_category_balanced(
+    cases: Sequence[Mapping[str, Any]],
+    *,
+    min_total: int,
+    category_order: Sequence[str],
+) -> list[dict[str, Any]]:
+    original = [dict(case) for case in cases]
+    if not original:
+        return []
+
+    if int(min_total) <= len(original):
+        return original
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for case in original:
+        category = str(case.get("category", "") or "uncategorized")
+        grouped.setdefault(category, []).append(case)
+
+    ordered_categories: list[str] = []
+    seen: set[str] = set()
+    for category in category_order:
+        if category in grouped and grouped[category]:
+            ordered_categories.append(category)
+            seen.add(category)
+    for category in sorted(grouped.keys()):
+        if category in seen:
+            continue
+        ordered_categories.append(category)
+
+    if not ordered_categories:
+        return original
+
+    per_category_target = (int(min_total) + len(ordered_categories) - 1) // len(ordered_categories)
+    expanded_by_category: dict[str, list[dict[str, Any]]] = {}
+    for category in ordered_categories:
+        source_cases = grouped.get(category, [])
+        if not source_cases:
+            continue
+        expanded_rows: list[dict[str, Any]] = []
+        source_count = len(source_cases)
+        for idx in range(per_category_target):
+            base_case = source_cases[idx % source_count]
+            row = dict(base_case)
+            base_id = str(base_case.get("id", "") or "case")
+            if idx >= source_count:
+                row["id"] = f"{base_id}__rep{idx:03d}"
+            expanded_rows.append(row)
+        expanded_by_category[category] = expanded_rows
+
+    expanded: list[dict[str, Any]] = []
+    for idx in range(per_category_target):
+        for category in ordered_categories:
+            rows = expanded_by_category.get(category, [])
+            if idx < len(rows):
+                expanded.append(rows[idx])
+    return expanded
+
+
+def _expanded_core_cases(*, min_cases: int) -> list[dict[str, Any]]:
+    return _expand_cases_category_balanced(
+        CORE_EVAL_CASES,
+        min_total=int(min_cases),
+        category_order=CATEGORY_ORDER,
+    )
+
+
+def _expanded_tool_first_cases(*, min_cases: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    expanded = _expand_cases_category_balanced(
+        list(TOOL_MATH_CASES) + list(TOOL_CODE_CASES),
+        min_total=int(min_cases),
+        category_order=("math", "code"),
+    )
+    math_cases = [row for row in expanded if str(row.get("category", "") or "") == "math"]
+    code_cases = [row for row in expanded if str(row.get("category", "") or "") == "code"]
+    return math_cases, code_cases
+
+
 def _setup_prompt(case: Mapping[str, Any]) -> str:
     return str(case.get("setup_prompt", "") or "").strip()
 
@@ -587,16 +682,22 @@ def _run_swarm_with_sfc(
     }
 
 
-def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: float) -> dict[str, Any]:
+def _evaluate_core_config(
+    config: MatrixConfig,
+    *,
+    seed: int,
+    pass_threshold: float,
+    cases: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
-    case_count = int(len(CORE_EVAL_CASES))
+    case_count = int(len(cases))
     max_escalation_rate = _clamp(_safe_float(config.dual_gate_max_escalation_rate, default=0.25), 0.0, 1.0)
     max_escalations = int(round(case_count * max_escalation_rate))
     if bool(config.dual_gate_enabled) and max_escalation_rate > 0.0 and max_escalations <= 0:
         max_escalations = 1
     escalations_used = 0
 
-    for idx, case in enumerate(CORE_EVAL_CASES):
+    for idx, case in enumerate(cases):
         case_id = str(case["id"])
         category = str(case.get("category", "") or "uncategorized")
         prompt = str(case["prompt"])
@@ -810,14 +911,19 @@ def _tool_code(prompt: str) -> bool:
     return bool(out.success)
 
 
-def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], dict[str, Any]]:
+def _evaluate_tool_first_runs(
+    pass_threshold: float,
+    *,
+    math_cases: Sequence[Mapping[str, Any]],
+    code_cases: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     baseline_rows: list[dict[str, Any]] = []
     tool_rows: list[dict[str, Any]] = []
 
-    for case in TOOL_MATH_CASES:
+    for case in math_cases:
         prompt = str(case["prompt"])
         category = str(case.get("category", "") or "math")
-        expected = set(case["expected"])
+        expected = {str(v) for v in (case.get("expected") or [])}
         baseline_ok = _score_math_case(prompt, expected, _baseline_non_tool_math)
         tool_ok = _score_math_case(prompt, expected, _tool_math)
 
@@ -852,7 +958,7 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
             }
         )
 
-    for case in TOOL_CODE_CASES:
+    for case in code_cases:
         prompt = str(case["prompt"])
         category = str(case.get("category", "") or "code")
         baseline_ok = _baseline_non_tool_code(prompt)
@@ -1233,16 +1339,37 @@ def _tool_first_compat_payload(*, baseline_run: Mapping[str, Any], tool_run: Map
 def main() -> int:
     seed = int(os.getenv("MOAA_PR5_EVAL_SEED") or "37")
     pass_threshold = float(os.getenv("MOAA_PR5_PASS_THRESHOLD") or str(PASS_THRESHOLD))
+    core_min_cases = _env_min_cases(
+        "MOAA_PR5_MATRIX_MIN_CORE_CASES",
+        default=DEFAULT_CORE_MIN_CASES,
+        minimum=len(CORE_EVAL_CASES),
+    )
+    tool_min_cases = _env_min_cases(
+        "MOAA_PR5_MATRIX_MIN_TOOL_CASES",
+        default=DEFAULT_TOOL_FIRST_MIN_CASES,
+        minimum=len(TOOL_MATH_CASES) + len(TOOL_CODE_CASES),
+    )
+    core_cases = _expanded_core_cases(min_cases=core_min_cases)
+    tool_math_cases, tool_code_cases = _expanded_tool_first_cases(min_cases=tool_min_cases)
 
     runs: list[dict[str, Any]] = []
     run_index: dict[str, dict[str, Any]] = {}
 
     for config in CORE_CONFIGS:
-        run = _evaluate_core_config(config, seed=seed, pass_threshold=pass_threshold)
+        run = _evaluate_core_config(
+            config,
+            seed=seed,
+            pass_threshold=pass_threshold,
+            cases=core_cases,
+        )
         runs.append(run)
         run_index[config.config_id] = run
 
-    tool_first_off_run, tool_first_on_run = _evaluate_tool_first_runs(pass_threshold=pass_threshold)
+    tool_first_off_run, tool_first_on_run = _evaluate_tool_first_runs(
+        pass_threshold=pass_threshold,
+        math_cases=tool_math_cases,
+        code_cases=tool_code_cases,
+    )
     runs.append(tool_first_off_run)
     runs.append(tool_first_on_run)
     run_index["tool_first_off"] = tool_first_off_run

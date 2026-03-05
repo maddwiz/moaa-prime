@@ -8,7 +8,7 @@ The production control plane for this repository is:
 - CI workflow: `.github/workflows/ci.yml`
 - Release workflow: `.github/workflows/release.yml`
 - Runtime gates: `scripts/preflight_prod.py`, `scripts/load_smoke.py`
-- Quality gates: `scripts/eval_matrix.py`, `scripts/eval_router.py`, `scripts/eval_dual_gate.py`
+- Quality gates: `scripts/eval_matrix.py`, `scripts/eval_router.py`, `scripts/eval_compare.py`, `scripts/eval_dual_gate.py`, `scripts/eval_external_bench.py`
 
 ## Service Level Objectives (SLO)
 Primary SLO targets for release candidates:
@@ -24,12 +24,18 @@ Primary SLO targets for release candidates:
 - `load_smoke` must report:
   - `error_rate <= 0.01`
   - `p95_latency_ms <= 2500`
+- `load_smoke_long` (`--iters 500`) must report:
+  - `error_rate <= 0.01`
+  - `p95_latency_ms <= 2500`
 
 3. Stability SLO
 - Router and dual-gate non-regression checks remain passing:
   - routing accuracy delta `>= 0`
   - oracle score gain delta `>= 0`
   - dual trigger rate bounded below full activation
+- External holdout benchmark remains healthy:
+  - `counts.num_cases >= 100`
+  - `metrics.pass_rate >= 0.75`
 
 ## Availability and Recovery Targets
 - RTO: 30 minutes for production rollback to last known-good release.
@@ -93,9 +99,12 @@ Rollback execution:
 Required evidence per release:
 - `reports/eval_matrix.json`
 - `reports/eval_router.json`
+- `reports/eval_compare.json`
 - `reports/dual_gated_eval.json`
+- `reports/external_bench.json`
 - `reports/preflight_prod.json`
 - `reports/load_smoke.json`
+- `reports/load_smoke_long.json`
 
 Evidence retention:
 - Attach release artifact bundle in GitHub release.

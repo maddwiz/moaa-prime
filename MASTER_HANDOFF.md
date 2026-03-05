@@ -7,7 +7,29 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
 
 - Keep changes small, test-backed, and reversible.
 - Update docs (`README.md`, `MASTER_HANDOFF.md`, `DEMO_README.md`) when command behavior changes.
-- Treat `reports/`, `reports/traces/`, `datasets/`, and `models/` as generated output.
+- Treat `reports/`, `reports/traces/`, and `models/` as generated output.
+- `datasets/router_training.jsonl` is generated; `datasets/external_benchmarks.jsonl` is a tracked holdout fixture.
+
+## Cycle 004F Truth (Long-Eval Production Campaign)
+
+- Long-volume deterministic eval defaults are now built into scripts (no env vars required):
+  - `scripts/eval_matrix.py`
+    - core per-run minimum: `150` (`MOAA_PR5_MATRIX_MIN_CORE_CASES`)
+    - tool-first per-run minimum: `90` (`MOAA_PR5_MATRIX_MIN_TOOL_CASES`)
+    - total matrix volume now clears long-eval threshold (`>= 1200`) by default.
+  - `scripts/eval_dual_gate.py`
+    - baseline/dual suite minimum: `150` (`MOAA_PR4_DUAL_EVAL_MIN_CASES`)
+  - `scripts/eval_router.py`
+    - router suite minimum: `50` (`MOAA_ROUTER_EVAL_MIN_CASES`)
+  - `scripts/eval_compare.py`
+    - compare suite minimum: `50` (`MOAA_EVAL_COMPARE_MIN_CASES`)
+- New external holdout benchmark path:
+  - dataset: `datasets/external_benchmarks.jsonl` (120 holdout rows, category balanced)
+  - evaluator: `scripts/eval_external_bench.py`
+  - report: `reports/external_bench.json`
+  - tests: `tests/test_prod_external_bench.py`
+- Long load smoke path now part of production long-eval validation:
+  - `python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 500`
 
 ## Roadmap Status (PR-0, PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7, PR-8)
 
