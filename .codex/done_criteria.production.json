@@ -1,0 +1,418 @@
+{
+  "require_clean_worktree": true,
+  "required_files": [
+    "CONTRACTS.md",
+    "ROADMAP.md",
+    "README.md",
+    "DEMO_README.md",
+    "src/moaa_prime/policy/tool_first.py",
+    "src/moaa_prime/tools/code_sandbox.py",
+    "src/moaa_prime/router/intent.py",
+    "src/moaa_prime/duality/gated_dual.py",
+    "src/moaa_prime/eval/failure_taxonomy.py",
+    "src/moaa_prime/schema/answer_object.py",
+    "scripts/eval_tool_first.py",
+    "scripts/eval_dual_gate.py",
+    "scripts/eval_matrix.py",
+    "scripts/train_router.py",
+    "scripts/eval_router.py",
+    "scripts/dashboard.py",
+    "tests/test_pr0_contract_compatibility.py",
+    "tests/test_pr1_tool_first_policy.py",
+    "tests/test_pr2_code_sandbox_verifier.py",
+    "tests/test_pr3_router_intent_trace.py",
+    "tests/test_pr4_gated_dual.py",
+    "tests/test_pr5_eval_matrix_script.py",
+    "tests/test_pr6_memory_regression.py",
+    "tests/test_upgrade_failure_taxonomy.py",
+    "tests/test_upgrade_answer_object.py",
+    "tests/test_pr7_dashboard_smoke.py",
+    "reports/demo_run.json",
+    "reports/bench.json",
+    "reports/eval_report.json",
+    "reports/eval_tool_first.json",
+    "reports/tool_first_eval.json",
+    "reports/eval_compare.json",
+    "reports/dual_gated_eval.json",
+    "reports/eval_matrix.json",
+    "reports/router_train_report.json",
+    "reports/eval_router.json",
+    "reports/final_report.json",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
+    "PRODUCTION_READINESS.md",
+    "RUNBOOK_PRODUCTION.md",
+    "scripts/preflight_prod.py",
+    "scripts/load_smoke.py",
+    "tests/test_prod_preflight.py",
+    "tests/test_prod_load_smoke.py",
+    "tests/test_prod_report_schema.py",
+    "reports/preflight_prod.json",
+    "reports/load_smoke.json"
+  ],
+  "file_checks": [
+    {
+      "name": "readme_filled",
+      "file": "README.md",
+      "min_bytes": 1500,
+      "contains": [
+        "Quickstart",
+        "eval_matrix.py",
+        "swarm_autopilot.sh"
+      ]
+    },
+    {
+      "name": "roadmap_filled",
+      "file": "ROADMAP.md",
+      "min_bytes": 2500,
+      "contains": [
+        "PR-0",
+        "PR-1",
+        "PR-2",
+        "PR-3",
+        "PR-4",
+        "PR-5",
+        "PR-6",
+        "PR-7",
+        "PR-8",
+        "Done Definition",
+        "Failure taxonomy",
+        "Structured Answer Object",
+        "Budgeted Swarm"
+      ]
+    },
+    {
+      "name": "contracts_doc_filled",
+      "file": "CONTRACTS.md",
+      "min_bytes": 500,
+      "contains": [
+        "Router output shape",
+        "Swarm output shape",
+        "Agent interface"
+      ]
+    },
+    {
+      "name": "demo_readme_filled",
+      "file": "DEMO_README.md",
+      "min_bytes": 500,
+      "contains": [
+        "demo_run.py",
+        "bench_run.py",
+        "eval_run.py",
+        "render_report.py"
+      ]
+    },
+    {
+      "name": "prod_readiness_filled",
+      "file": "PRODUCTION_READINESS.md",
+      "min_bytes": 1200,
+      "contains": [
+        "SLO",
+        "RTO",
+        "RPO",
+        "Rollback",
+        "On-call"
+      ]
+    },
+    {
+      "name": "prod_runbook_filled",
+      "file": "RUNBOOK_PRODUCTION.md",
+      "min_bytes": 1200,
+      "contains": [
+        "Incident",
+        "Runbook",
+        "Smoke",
+        "Release",
+        "Rollback"
+      ]
+    },
+    {
+      "name": "ci_workflow_present",
+      "file": ".github/workflows/ci.yml",
+      "min_bytes": 300,
+      "contains": [
+        "pytest",
+        "eval_matrix.py"
+      ]
+    },
+    {
+      "name": "release_workflow_present",
+      "file": ".github/workflows/release.yml",
+      "min_bytes": 250,
+      "contains": [
+        "workflow_dispatch",
+        "gh release"
+      ]
+    }
+  ],
+  "command_checks": [
+    {
+      "name": "pytest_green",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q; else pytest -q; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "demo_run",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/demo_run.py; else python scripts/demo_run.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "bench_run",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/bench_run.py; else python scripts/bench_run.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_run",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_run.py; else python scripts/eval_run.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_tool_first",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_tool_first.py; else python scripts/eval_tool_first.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_compare",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_compare.py; else python scripts/eval_compare.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_dual_gate",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_dual_gate.py; else python scripts/eval_dual_gate.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_matrix",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_matrix.py; else python scripts/eval_matrix.py; fi",
+      "timeout_sec": 2400
+    },
+    {
+      "name": "eval_matrix_run_schema_fields",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));runs=((data.get(\"matrix\") or {}).get(\"runs\") or []);keys=(\"num_cases\",\"scored_cases\",\"passed\",\"pass_rate\",\"avg_oracle_score\",\"avg_latency_proxy\");ok=isinstance(runs,list) and bool(runs) and all(isinstance(r,dict) and all((k in r) and (r.get(k) is not None) for k in keys) for r in runs);missing=[f\"{i}:{k}\" for i,r in enumerate(runs) for k in keys if (not isinstance(r,dict)) or (k not in r) or (r.get(k) is None)];print(\"ok\" if ok else f\"eval_matrix_run_schema_invalid missing={missing}\");sys.exit(0 if ok else 1)'; else python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));runs=((data.get(\"matrix\") or {}).get(\"runs\") or []);keys=(\"num_cases\",\"scored_cases\",\"passed\",\"pass_rate\",\"avg_oracle_score\",\"avg_latency_proxy\");ok=isinstance(runs,list) and bool(runs) and all(isinstance(r,dict) and all((k in r) and (r.get(k) is not None) for k in keys) for r in runs);missing=[f\"{i}:{k}\" for i,r in enumerate(runs) for k in keys if (not isinstance(r,dict)) or (k not in r) or (r.get(k) is None)];print(\"ok\" if ok else f\"eval_matrix_run_schema_invalid missing={missing}\");sys.exit(0 if ok else 1)'; fi",
+      "timeout_sec": 180
+    },
+    {
+      "name": "tool_verification_targeted_code_math_non_regression",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));rows=((data.get(\"per_case_diffs\") or {}).get(\"tool_first_on_vs_off\") or []);targets=[r for r in rows if isinstance(r,dict) and str(r.get(\"case_id\",\"\")).startswith((\"code_\",\"math_\"))];has_code=any(str(r.get(\"case_id\",\"\")).startswith(\"code_\") for r in targets);has_math=any(str(r.get(\"case_id\",\"\")).startswith(\"math_\") for r in targets);deltas=[float(r.get(\"tool_verified_delta\")) for r in targets];ok=bool(targets) and has_code and has_math and all(v >= 0.0 for v in deltas);print(\"ok\" if ok else f\"tool_verification_targeted_non_regression_failed has_code={has_code} has_math={has_math} deltas={deltas}\");sys.exit(0 if ok else 1)'; else python -c 'import json,sys;data=json.load(open(\"reports/eval_matrix.json\",encoding=\"utf-8\"));rows=((data.get(\"per_case_diffs\") or {}).get(\"tool_first_on_vs_off\") or []);targets=[r for r in rows if isinstance(r,dict) and str(r.get(\"case_id\",\"\")).startswith((\"code_\",\"math_\"))];has_code=any(str(r.get(\"case_id\",\"\")).startswith(\"code_\") for r in targets);has_math=any(str(r.get(\"case_id\",\"\")).startswith(\"math_\") for r in targets);deltas=[float(r.get(\"tool_verified_delta\")) for r in targets];ok=bool(targets) and has_code and has_math and all(v >= 0.0 for v in deltas);print(\"ok\" if ok else f\"tool_verification_targeted_non_regression_failed has_code={has_code} has_math={has_math} deltas={deltas}\");sys.exit(0 if ok else 1)'; fi",
+      "timeout_sec": 180
+    },
+    {
+      "name": "train_router",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/train_router.py; else python scripts/train_router.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "eval_router",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_router.py; else python scripts/eval_router.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "render_report",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/render_report.py; else python scripts/render_report.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "compatibility_tests",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q tests/test_pr0_contract_compatibility.py tests/test_pr3_router_intent_trace.py tests/test_pr5_eval_matrix_script.py; else pytest -q tests/test_pr0_contract_compatibility.py tests/test_pr3_router_intent_trace.py tests/test_pr5_eval_matrix_script.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "memory_regression_tests",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q tests/test_pr6_memory_regression.py; else pytest -q tests/test_pr6_memory_regression.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "failure_taxonomy_tests",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q tests/test_upgrade_failure_taxonomy.py; else pytest -q tests/test_upgrade_failure_taxonomy.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "answer_object_tests",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q tests/test_upgrade_answer_object.py; else pytest -q tests/test_upgrade_answer_object.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "dashboard_smoke_tests",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q tests/test_pr7_dashboard_smoke.py; else pytest -q tests/test_pr7_dashboard_smoke.py; fi",
+      "timeout_sec": 1800
+    },
+    {
+      "name": "cli_module_help",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python -m moaa_prime --help >/dev/null; else python -m moaa_prime --help >/dev/null; fi",
+      "timeout_sec": 180
+    },
+    {
+      "name": "preflight_prod",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/preflight_prod.py --output reports/preflight_prod.json; else python scripts/preflight_prod.py --output reports/preflight_prod.json; fi",
+      "timeout_sec": 600
+    },
+    {
+      "name": "load_smoke",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/load_smoke.py --output reports/load_smoke.json --iters 50; else python scripts/load_smoke.py --output reports/load_smoke.json --iters 50; fi",
+      "timeout_sec": 900
+    }
+  ],
+  "checks": [
+    {
+      "name": "tool_first_eval_delta_positive",
+      "file": "reports/tool_first_eval.json",
+      "path": "overall.pass_rate_delta",
+      "op": "gt",
+      "value": 0.0
+    },
+    {
+      "name": "dual_gate_eval_non_regression",
+      "file": "reports/dual_gated_eval.json",
+      "path": "summary.dual_gated.pass_rate_delta_vs_baseline",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "dual_gate_trigger_rate_below_full_activation",
+      "file": "reports/dual_gated_eval.json",
+      "path": "summary.dual_gated.trigger_rate",
+      "op": "lt",
+      "value": 1.0
+    },
+    {
+      "name": "router_routing_accuracy_non_regression",
+      "file": "reports/eval_router.json",
+      "path": "routing_accuracy.delta",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "router_oracle_score_non_regression",
+      "file": "reports/eval_router.json",
+      "path": "oracle_score_gain.delta",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "tool_first_beats_baseline",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.tool_first.pass_rate_delta_vs_baseline",
+      "op": "gt",
+      "value": 0.0
+    },
+    {
+      "name": "swarm_beats_baseline",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.swarm.pass_rate_delta_vs_baseline",
+      "op": "gt",
+      "value": 0.0
+    },
+    {
+      "name": "dual_gated_non_regression",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.dual_gated.pass_rate_delta_vs_baseline",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "memory_non_regression",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.memory.pass_rate_delta_vs_baseline",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "sfc_budget_latency_non_regression",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.sfc.latency_delta_vs_baseline",
+      "op": "le",
+      "value": 0.0
+    },
+    {
+      "name": "tool_verification_uplift",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.tool_first.tool_verification_rate_delta_vs_baseline",
+      "op": "gt",
+      "value": 0.0
+    },
+    {
+      "name": "final_report_has_verdict",
+      "file": "reports/final_report.json",
+      "path": "verdict",
+      "op": "ne",
+      "value": ""
+    },
+    {
+      "name": "eval_matrix_case_volume_production",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.counts.num_cases",
+      "op": "ge",
+      "value": 400
+    },
+    {
+      "name": "baseline_pass_rate_production_floor",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.baseline_single.pass_rate",
+      "op": "ge",
+      "value": 0.85
+    },
+    {
+      "name": "swarm_latency_non_regression_strict",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.swarm.latency_delta_vs_baseline",
+      "op": "le",
+      "value": 0.0
+    },
+    {
+      "name": "dual_latency_non_regression_strict",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.dual_gated.latency_delta_vs_baseline",
+      "op": "le",
+      "value": 0.0
+    },
+    {
+      "name": "router_routing_accuracy_non_regression_v2_v3",
+      "file": "reports/eval_router.json",
+      "path": "summary.metrics.routing_accuracy_delta",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "router_oracle_score_non_regression_v2_v3",
+      "file": "reports/eval_router.json",
+      "path": "summary.metrics.oracle_score_gain_delta",
+      "op": "ge",
+      "value": 0.0
+    },
+    {
+      "name": "dual_trigger_rate_bounded_prod",
+      "file": "reports/dual_gated_eval.json",
+      "path": "summary.dual_gated.metrics.trigger_rate",
+      "op": "lt",
+      "value": 0.95
+    },
+    {
+      "name": "tool_first_category_delta_positive",
+      "file": "reports/eval_tool_first.json",
+      "path": "summary.metrics.pass_rate_delta",
+      "op": "gt",
+      "value": 0.0
+    },
+    {
+      "name": "preflight_passed",
+      "file": "reports/preflight_prod.json",
+      "path": "status",
+      "op": "eq",
+      "value": "pass"
+    },
+    {
+      "name": "load_smoke_error_rate_low",
+      "file": "reports/load_smoke.json",
+      "path": "metrics.error_rate",
+      "op": "le",
+      "value": 0.01
+    },
+    {
+      "name": "load_smoke_p95_budget",
+      "file": "reports/load_smoke.json",
+      "path": "metrics.p95_latency_ms",
+      "op": "le",
+      "value": 2500.0
+    }
+  ]
+}
