@@ -317,7 +317,7 @@ def select_gated_dual(
     tool_failed: bool = False,
     answer_metadata: Mapping[str, Any] | None = None,
     low_confidence_threshold: float = 0.60,
-    high_ambiguity_threshold: float = 0.55,
+    high_ambiguity_threshold: float = 0.85,
 ) -> DualSelectionResult:
     selector = GatedDualBrainSelector(
         low_confidence_threshold=low_confidence_threshold,

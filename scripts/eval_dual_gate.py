@@ -69,15 +69,23 @@ def _pass_rate(values: list[bool]) -> float:
     return float(sum(1 for value in values if value) / len(values))
 
 
-def _run_counts(*, scores: list[float], passes: list[bool]) -> dict[str, int]:
-    num_cases = int(len(scores))
-    scored_cases = int(len(scores))
-    passed = int(sum(1 for value in passes if value))
+def _validated_counts(*, num_cases: int, scored_cases: int, passed: int) -> dict[str, int]:
+    num = max(0, int(num_cases))
+    scored = max(0, min(num, int(scored_cases)))
+    passed_clamped = max(0, min(scored, int(passed)))
     return {
-        "num_cases": num_cases,
-        "scored_cases": scored_cases,
-        "passed": passed,
+        "num_cases": int(num),
+        "scored_cases": int(scored),
+        "passed": int(passed_clamped),
     }
+
+
+def _run_counts(*, scores: list[float], passes: list[bool]) -> dict[str, int]:
+    return _validated_counts(
+        num_cases=int(len(scores)),
+        scored_cases=int(len(scores)),
+        passed=int(sum(1 for value in passes if value)),
+    )
 
 
 def _run_summary(*, config_id: str, scores: list[float], passes: list[bool]) -> dict[str, object]:
@@ -198,11 +206,11 @@ def main() -> int:
         dual_metrics["trigger_rate"] = float(trigger_rate)
         dual_metrics["triggered"] = int(trigger_count)
 
-    counts = {
-        "num_cases": int(len(CORE_EVAL_CASES)),
-        "scored_cases": int(len(CORE_EVAL_CASES)),
-        "passed": int(dual_summary["passed"]),
-    }
+    counts = _validated_counts(
+        num_cases=int(len(CORE_EVAL_CASES)),
+        scored_cases=int(len(CORE_EVAL_CASES)),
+        passed=int(dual_summary["passed"]),
+    )
 
     payload = {
         "suite": "pr4_dual_gate",
@@ -214,6 +222,7 @@ def main() -> int:
         "num_cases": int(counts["num_cases"]),
         "scored_cases": int(counts["scored_cases"]),
         "passed": int(counts["passed"]),
+        "pass_rate": float(counts["passed"] / max(1, counts["scored_cases"])),
         "summary": {
             "baseline": baseline_summary,
             "dual_gated": dual_summary,

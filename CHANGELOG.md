@@ -625,6 +625,39 @@ Cycle log:
   - `tests/test_cycle3_router_training.py`
 - Updated Cycle 3 architecture and handoff docs to include budget-mode feature conditioning in router/training sections.
 
+## Cycle 004 — Eval breadth + latency efficiency tuning
+- Expanded deterministic core eval catalog from 42 to 48 cases:
+  - `src/moaa_prime/eval/cases.py`
+  - now 8 cases per required category:
+    - `math`
+    - `code`
+    - `reasoning`
+    - `safety`
+    - `routing_intent`
+    - `memory_behavior`
+- Tightened and standardized count schema guards across eval reports:
+  - added count clamping helper (`0 <= passed <= scored_cases <= num_cases`) in:
+    - `scripts/eval_matrix.py`
+    - `scripts/eval_router.py`
+    - `scripts/eval_dual_gate.py`
+  - `scripts/eval_dual_gate.py` now emits top-level `pass_rate` in addition to explicit count aliases.
+- Improved swarm/dual-gate latency behavior while preserving deterministic defaults:
+  - `src/moaa_prime/swarm/manager.py`
+    - v3 now clamps to one effective round when `top_k=1`
+    - added first-round strong-consensus early stop policy
+  - `scripts/eval_matrix.py`
+    - tuned fast-path latency profiles for `cheap|balanced|max_quality`
+    - added config params for `latency_proxy_mode` and bounded dual escalation rate
+  - `src/moaa_prime/core/app.py`
+    - dual-gate now supports `max_single_score_for_dual` cap to avoid ambiguity-only over-triggering
+    - recomputes `avg_latency_proxy` / `avg_cost_proxy` after dual-gate candidate mutation
+  - `src/moaa_prime/duality/gated_dual.py`
+    - aligned `select_gated_dual()` default `high_ambiguity_threshold` with selector default (`0.85`)
+- Strengthened deterministic schema tests:
+  - `tests/test_pr5_eval_cases_catalog.py`
+  - `tests/test_pr5_eval_matrix_script.py`
+  - `tests/test_pr4_dual_gate_eval_script.py`
+
 ## Cycle 003B — RouterV3 calibration + training quality increment
 - Extended `RouterV3Model` (`src/moaa_prime/router/router_v3.py`) with deterministic post-logit calibration parameters:
   - `calibration_scale`

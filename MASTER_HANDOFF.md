@@ -110,12 +110,12 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
     - `summary` delta blocks with baseline comparisons
     - per-case diffs for all major ablations
     - category coverage blocks (`math`, `code`, `reasoning`, `safety`, `routing_intent`, `memory_behavior`)
-  - deterministic core coverage now runs from a shared 42-case catalog:
+  - deterministic core coverage now runs from a shared 48-case catalog:
     - `src/moaa_prime/eval/cases.py`
     - consumed by:
       - `scripts/eval_matrix.py`
       - `scripts/eval_dual_gate.py`
-    - balanced distribution is now 7 cases per required category:
+    - balanced distribution is now 8 cases per required category:
       - `math`
       - `code`
       - `reasoning`
@@ -133,14 +133,31 @@ Local path: `/Users/desmondpottle/Documents/New project/moaa-prime`
       - `budget_mode="cheap"`
       - `rounds=1`
       - `top_k=1`
+    - v3 swarm runtime now clamps to one effective round when `top_k=1`.
+      - file: `src/moaa_prime/swarm/manager.py`
+    - v3 swarm runtime now supports first-round strong-consensus stop for multi-round runs.
+      - file: `src/moaa_prime/swarm/manager.py`
     - `scripts/eval_matrix.py` applies a deterministic budget-aware single-candidate latency fast-path proxy in this exact `rounds=1/top_k=1` shape.
       - fast-path tuning uses budget profile + confidence/oracle + verification/dual-gate signals.
       - raw swarm latency remains an upper bound for the derived fast-path proxy.
+    - eval matrix dual escalation is now bounded by a deterministic per-run rate cap.
+      - matrix param: `dual_gate_max_escalation_rate`
+    - dual-gate supports ambiguity-only suppression when the single answer score is already strong.
+      - dual config key: `max_single_score_for_dual`
+      - implementation: `src/moaa_prime/core/app.py`
+    - post dual-gate candidate mutation now recomputes aggregate latency/cost proxies.
+      - implementation: `src/moaa_prime/core/app.py`
   - matrix top-level schema now includes explicit count fields:
     - `num_cases`
     - `scored_cases`
     - `passed`
     - `pass_rate`
+  - eval scripts now clamp and standardize count triples (`num_cases`, `scored_cases`, `passed`) to keep invariants stable:
+    - `0 <= passed <= scored_cases <= num_cases`
+    - files:
+      - `scripts/eval_matrix.py`
+      - `scripts/eval_router.py`
+      - `scripts/eval_dual_gate.py`
   - done-gate summary paths now produced directly in `reports/eval_matrix.json`:
     - `summary.tool_first.pass_rate_delta_vs_baseline`
     - `summary.swarm.pass_rate_delta_vs_baseline`

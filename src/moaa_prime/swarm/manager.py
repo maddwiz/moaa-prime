@@ -299,18 +299,24 @@ class SwarmManager:
                 "prune_margin": 0.05,
                 "min_improvement": 0.010,
                 "stop_score_floor": 0.76,
+                "first_round_stop_score": 0.82,
+                "first_round_stop_margin": 0.05,
             },
             "balanced": {
                 "prune_score": 0.85,
                 "prune_margin": 0.06,
                 "min_improvement": 0.008,
                 "stop_score_floor": 0.80,
+                "first_round_stop_score": 0.85,
+                "first_round_stop_margin": 0.06,
             },
             "max_quality": {
                 "prune_score": 0.92,
                 "prune_margin": 0.12,
                 "min_improvement": 0.006,
                 "stop_score_floor": 0.88,
+                "first_round_stop_score": 0.92,
+                "first_round_stop_margin": 0.12,
             },
         }
         return dict(profile_map.get(budget_mode, profile_map["balanced"]))
@@ -790,6 +796,8 @@ class SwarmManager:
 
         requested_rounds = int(max(1, rounds))
         requested_top_k = int(max(1, top_k))
+        if chosen_mode == "v3" and requested_top_k <= 1:
+            requested_rounds = 1
         round_policy = self._v3_round_policy(budget_mode) if chosen_mode == "v3" else {}
 
         candidates: List[Dict[str, Any]] = []
@@ -837,6 +845,17 @@ class SwarmManager:
 
             if round_idx + 1 >= requested_rounds:
                 continue
+
+            first_round_stop_score = float(round_policy.get("first_round_stop_score", 1.01))
+            first_round_stop_margin = float(round_policy.get("first_round_stop_margin", 1.01))
+            if (
+                round_idx == 0
+                and round_best_score >= first_round_stop_score
+                and round_margin >= first_round_stop_margin
+            ):
+                stopped_early = True
+                stop_reason = "first-round-strong-consensus"
+                break
 
             if len(round_agents) > 1:
                 prune_score = float(round_policy.get("prune_score", 1.01))

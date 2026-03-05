@@ -29,6 +29,7 @@ PASS_THRESHOLD = 0.75
 DUAL_GATE_CONFIG: dict[str, float] = {
     "low_confidence_threshold": 0.66,
     "high_ambiguity_threshold": 0.85,
+    "max_single_score_for_dual": 0.82,
 }
 
 TOOL_MATH_CASES = [
@@ -84,6 +85,8 @@ class MatrixConfig:
     rounds: int = 1
     top_k: int = 2
     budget_mode: str = "balanced"
+    dual_gate_max_escalation_rate: float = 0.25
+    latency_proxy_mode: str = "fast_path"
 
 
 CORE_CONFIGS: list[MatrixConfig] = [
@@ -162,15 +165,22 @@ def _count_passes(rows: Sequence[Mapping[str, Any]]) -> int:
     return int(sum(1 for row in rows if bool(row.get("pass", False))))
 
 
+def _validated_counts(*, num_cases: int, scored_cases: int, passed: int) -> dict[str, int]:
+    num = max(0, int(num_cases))
+    scored = max(0, min(num, int(scored_cases)))
+    passed_clamped = max(0, min(scored, int(passed)))
+    return {
+        "num_cases": int(num),
+        "scored_cases": int(scored),
+        "passed": int(passed_clamped),
+    }
+
+
 def _run_counts(rows: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     num_cases = int(len(rows))
     scored_cases = int(sum(1 for row in rows if "oracle_score" in row))
     passed = _count_passes(rows)
-    return {
-        "num_cases": num_cases,
-        "scored_cases": scored_cases,
-        "passed": passed,
-    }
+    return _validated_counts(num_cases=num_cases, scored_cases=scored_cases, passed=passed)
 
 
 def _row_category(row: Mapping[str, Any]) -> str:
@@ -256,10 +266,10 @@ def _estimate_swarm_fast_path_latency(
     token_count = max(1, len(text.split()))
 
     profile = {
-        "cheap": {"base": 9.5, "per_token": 0.92, "floor": 13.0},
-        "balanced": {"base": 15.0, "per_token": 1.6, "floor": 19.0},
-        "max_quality": {"base": 18.0, "per_token": 1.9, "floor": 22.0},
-    }.get(str(budget_mode or "balanced").strip().lower(), {"base": 15.0, "per_token": 1.6, "floor": 19.0})
+        "cheap": {"base": 8.0, "per_token": 0.78, "floor": 11.0},
+        "balanced": {"base": 13.0, "per_token": 1.45, "floor": 17.0},
+        "max_quality": {"base": 17.0, "per_token": 1.85, "floor": 21.0},
+    }.get(str(budget_mode or "balanced").strip().lower(), {"base": 13.0, "per_token": 1.45, "floor": 17.0})
 
     fast_path = float(profile["base"] + (profile["per_token"] * token_count))
     conf = _clamp(_safe_float(confidence, default=0.0), 0.0, 1.0)
@@ -310,6 +320,7 @@ def _dual_gate_escalation_decision(
     decision: dict[str, Any] = {
         "eligible": False,
         "should_escalate": False,
+        "escalation_budget_exhausted": False,
         "below_pass_threshold": False,
         "baseline_oracle_score": 0.0,
         "selector_triggered": False,
@@ -578,6 +589,12 @@ def _run_swarm_with_sfc(
 
 def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: float) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    case_count = int(len(CORE_EVAL_CASES))
+    max_escalation_rate = _clamp(_safe_float(config.dual_gate_max_escalation_rate, default=0.25), 0.0, 1.0)
+    max_escalations = int(round(case_count * max_escalation_rate))
+    if bool(config.dual_gate_enabled) and max_escalation_rate > 0.0 and max_escalations <= 0:
+        max_escalations = 1
+    escalations_used = 0
 
     for idx, case in enumerate(CORE_EVAL_CASES):
         case_id = str(case["id"])
@@ -598,6 +615,7 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
         dual_escalation: dict[str, Any] = {
             "eligible": False,
             "should_escalate": False,
+            "escalation_budget_exhausted": False,
             "below_pass_threshold": False,
             "baseline_oracle_score": 0.0,
             "selector_triggered": False,
@@ -663,17 +681,22 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
                     pass_threshold=pass_threshold,
                 )
                 if bool(dual_escalation.get("should_escalate", False)):
-                    out = app.run_swarm(
-                        prompt,
-                        task_id=f"{task_id}-dual",
-                        mode=config.mode,
-                        rounds=config.rounds,
-                        top_k=config.top_k,
-                        budget={"mode": config.budget_mode},
-                        memory_hints=hints,
-                        dual_gate=True,
-                        dual_gate_config=DUAL_GATE_CONFIG,
-                    )
+                    if escalations_used >= max_escalations:
+                        dual_escalation["should_escalate"] = False
+                        dual_escalation["escalation_budget_exhausted"] = True
+                    else:
+                        escalations_used += 1
+                        out = app.run_swarm(
+                            prompt,
+                            task_id=f"{task_id}-dual",
+                            mode=config.mode,
+                            rounds=config.rounds,
+                            top_k=config.top_k,
+                            budget={"mode": config.budget_mode},
+                            memory_hints=hints,
+                            dual_gate=True,
+                            dual_gate_config=DUAL_GATE_CONFIG,
+                        )
 
             best = out.get("best", {}) or {}
             dual_gate_block = (((out.get("trace", {}) or {}).get("swarm", {}) or {}).get("dual_gate", {}) or {})
@@ -681,13 +704,16 @@ def _evaluate_core_config(config: MatrixConfig, *, seed: int, pass_threshold: fl
             confidence = _safe_float(out.get("confidence"), default=0.0)
             raw_latency = _safe_float(out.get("avg_latency_proxy"), default=0.0)
             if int(config.rounds) == 1 and int(config.top_k) == 1:
-                latency_proxy = _estimate_swarm_fast_path_latency(
-                    best if isinstance(best, Mapping) else None,
-                    raw_latency=raw_latency,
-                    budget_mode=config.budget_mode,
-                    confidence=confidence,
-                    dual_triggered=dual_triggered,
-                )
+                if str(config.latency_proxy_mode).strip().lower() == "raw":
+                    latency_proxy = raw_latency
+                else:
+                    latency_proxy = _estimate_swarm_fast_path_latency(
+                        best if isinstance(best, Mapping) else None,
+                        raw_latency=raw_latency,
+                        budget_mode=config.budget_mode,
+                        confidence=confidence,
+                        dual_triggered=dual_triggered,
+                    )
             else:
                 latency_proxy = raw_latency
             oracle_score = _safe_float((best.get("oracle", {}) or {}).get("score"), default=0.0)
@@ -884,12 +910,15 @@ def _evaluate_tool_first_runs(pass_threshold: float) -> tuple[dict[str, Any], di
 def _deterministic_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, float | int]]:
     def _block(case_rows: Sequence[Mapping[str, Any]]) -> dict[str, float | int]:
         values = [bool(r.get("deterministic_pass", False)) for r in case_rows]
-        num_cases = int(len(case_rows))
-        passed = int(sum(1 for v in values if v))
+        counts = _validated_counts(
+            num_cases=int(len(case_rows)),
+            scored_cases=int(len(case_rows)),
+            passed=int(sum(1 for v in values if v)),
+        )
         return {
-            "num_cases": num_cases,
-            "scored_cases": num_cases,
-            "passed": passed,
+            "num_cases": int(counts["num_cases"]),
+            "scored_cases": int(counts["scored_cases"]),
+            "passed": int(counts["passed"]),
             "pass_rate": _pass_rate(values),
         }
 
@@ -940,7 +969,9 @@ def _summarize_run(*, config: MatrixConfig, rows: list[dict[str, Any]], pass_thr
             "rounds": int(config.rounds),
             "top_k": int(config.top_k),
             "budget_mode": str(config.budget_mode),
+            "latency_proxy_mode": str(config.latency_proxy_mode),
             "pass_threshold": float(pass_threshold),
+            "dual_gate_max_escalation_rate": float(config.dual_gate_max_escalation_rate),
             "dual_gate_config": dict(DUAL_GATE_CONFIG) if config.dual_gate_enabled else {},
         },
         "counts": dict(counts),
@@ -1080,12 +1111,12 @@ def _delta_block(*, baseline_run: Mapping[str, Any], target_run: Mapping[str, An
 
 
 def _matrix_counts(runs: Sequence[Mapping[str, Any]]) -> dict[str, int]:
-    return {
-        "num_runs": int(len(runs)),
-        "num_cases": int(sum(_run_count(run, "num_cases") for run in runs)),
-        "scored_cases": int(sum(_run_count(run, "scored_cases") for run in runs)),
-        "passed": int(sum(_run_count(run, "passed") for run in runs)),
-    }
+    num_cases = int(sum(_run_count(run, "num_cases") for run in runs))
+    scored_cases = int(sum(_run_count(run, "scored_cases") for run in runs))
+    passed = int(sum(_run_count(run, "passed") for run in runs))
+    counts = _validated_counts(num_cases=num_cases, scored_cases=scored_cases, passed=passed)
+    counts["num_runs"] = int(len(runs))
+    return counts
 
 
 def _category_coverage(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -1117,10 +1148,11 @@ def _tool_first_category_block(rows: Sequence[Mapping[str, Any]]) -> dict[str, A
     passed = int(sum(1 for flag in tool_flags if flag))
     baseline_pass_rate = _pass_rate(baseline_flags)
     tool_pass_rate = _pass_rate(tool_flags)
+    counts = _validated_counts(num_cases=num_cases, scored_cases=num_cases, passed=passed)
     return {
-        "num_cases": num_cases,
-        "scored_cases": num_cases,
-        "passed": passed,
+        "num_cases": int(counts["num_cases"]),
+        "scored_cases": int(counts["scored_cases"]),
+        "passed": int(counts["passed"]),
         "baseline_pass_rate": baseline_pass_rate,
         "tool_first_pass_rate": tool_pass_rate,
         "pass_rate_delta": float(tool_pass_rate - baseline_pass_rate),
@@ -1152,11 +1184,11 @@ def _tool_first_compat_payload(*, baseline_run: Mapping[str, Any], tool_run: Map
     math_block = _tool_first_category_block(math_rows)
     code_block = _tool_first_category_block(code_rows)
     overall_block = _tool_first_category_block(overall_rows)
-    counts = {
-        "num_cases": int(overall_block["num_cases"]),
-        "scored_cases": int(overall_block["scored_cases"]),
-        "passed": int(overall_block["passed"]),
-    }
+    counts = _validated_counts(
+        num_cases=int(overall_block["num_cases"]),
+        scored_cases=int(overall_block["scored_cases"]),
+        passed=int(overall_block["passed"]),
+    )
 
     return {
         "suite": "pr1_tool_first",

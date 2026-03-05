@@ -18,6 +18,17 @@ def _non_regression_pass(v2_value: float, v3_value: float, *, tolerance: float) 
     return float(v3_value - v2_value) >= (-abs(float(tolerance)))
 
 
+def _validated_counts(*, num_cases: int, scored_cases: int, passed: int) -> dict[str, int]:
+    num = max(0, int(num_cases))
+    scored = max(0, min(num, int(scored_cases)))
+    passed_clamped = max(0, min(scored, int(passed)))
+    return {
+        "num_cases": int(num),
+        "scored_cases": int(scored),
+        "passed": int(passed_clamped),
+    }
+
+
 def _load_cases() -> list[EvalCase]:
     cases_path = os.getenv("MOAA_ROUTER_EVAL_CASES_PATH")
     path = Path(cases_path) if cases_path else Path("demos/demo_cases.json")
@@ -145,10 +156,10 @@ def main() -> int:
     oracle_delta = float(avg_oracle_v3 - avg_oracle_v2)
     routing_non_regression = _non_regression_pass(v2_acc, v3_acc, tolerance=non_regression_tolerance)
     oracle_non_regression = _non_regression_pass(avg_oracle_v2, avg_oracle_v3, tolerance=non_regression_tolerance)
-    counts = {
-        "num_cases": int(len(cases)),
-        "scored_cases": int(len(rows)),
-        "passed": int(
+    counts = _validated_counts(
+        num_cases=int(len(cases)),
+        scored_cases=int(len(rows)),
+        passed=int(
             sum(
                 1
                 for row in rows
@@ -156,7 +167,7 @@ def main() -> int:
                 >= float((row.get("v2", {}) or {}).get("oracle_score", 0.0))
             )
         ),
-    }
+    )
 
     report = {
         "suite": "eval_router",

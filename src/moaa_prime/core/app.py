@@ -222,6 +222,24 @@ class MoAAPrime:
                 scores.append(self._safe_float(row.get("score"), default=0.0))
         return scores
 
+    def _recompute_swarm_aggregate_proxies(self, out: Dict[str, Any]) -> None:
+        candidates = out.get("candidates")
+        if not isinstance(candidates, list):
+            return
+
+        latency_values: list[float] = []
+        cost_values: list[float] = []
+        for row in candidates:
+            if not isinstance(row, Mapping):
+                continue
+            latency_values.append(self._safe_float(row.get("latency_proxy"), default=0.0))
+            cost_values.append(self._safe_float(row.get("cost_proxy"), default=0.0))
+
+        if latency_values:
+            out["avg_latency_proxy"] = float(sum(latency_values) / len(latency_values))
+        if cost_values:
+            out["avg_cost_proxy"] = float(sum(cost_values) / len(cost_values))
+
     def _build_dual_candidate(
         self,
         *,
@@ -328,11 +346,29 @@ class MoAAPrime:
         ranked_scores = self._ranked_router_scores(out)
         best_meta = best_candidate.get("meta") if isinstance(best_candidate.get("meta"), Mapping) else {}
         confidence = self._safe_float(out.get("confidence"), default=0.0)
+        single_oracle_score = self._safe_float((best_candidate.get("oracle", {}) or {}).get("score"), default=0.0)
+        max_single_score_for_dual = 1.1
+        if isinstance(dual_gate_config, Mapping):
+            max_single_score_for_dual = self._safe_float(
+                dual_gate_config.get("max_single_score_for_dual"),
+                default=1.1,
+            )
         precheck = selector.evaluate_trigger(
             confidence=confidence,
             ranked_scores=ranked_scores,
             answer_metadata=best_meta,
         )
+
+        cap_applied = False
+        cap_only_ambiguity = tuple(precheck.reasons) == ("high-ambiguity",)
+        if cap_only_ambiguity and single_oracle_score >= max_single_score_for_dual:
+            cap_applied = True
+            precheck = selector.evaluate_trigger(
+                confidence=1.0,
+                ambiguity=0.0,
+                ranked_scores=ranked_scores,
+                answer_metadata={},
+            )
 
         dual_candidate: Optional[Dict[str, Any]] = None
         if precheck.should_trigger:
@@ -366,7 +402,7 @@ class MoAAPrime:
                 "tool_failed": bool(selection.trigger.tool_failed),
                 "selector": {
                     "winner_source": str(selection.winner.label),
-                    "rule": str(selection.selection_reason),
+                    "rule": "high-ambiguity-score-cap" if cap_applied else str(selection.selection_reason),
                 },
                 "candidate_labels": [str(c.label) for c in selection.candidates],
             }
@@ -399,6 +435,7 @@ class MoAAPrime:
             final_trace["score"] = self._safe_float((dual_candidate.get("oracle", {}) or {}).get("score"), default=0.0)
             final_trace["confidence"] = self._safe_float(out.get("confidence"), default=0.0)
 
+        self._recompute_swarm_aggregate_proxies(out)
         swarm_trace["dual_gate"] = dual_trace
 
     def hello(self) -> str:

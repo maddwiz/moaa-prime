@@ -58,9 +58,7 @@ def _assert_run_shape(run: dict) -> None:
     assert "summary" in run
     assert "cases" in run
 
-    assert run["num_cases"] == run["counts"]["num_cases"]
-    assert run["scored_cases"] == run["counts"]["scored_cases"]
-    assert run["passed"] == run["counts"]["passed"]
+    _assert_count_triplet(run)
 
     assert isinstance(run["cases"], list)
     assert run["cases"]
@@ -68,6 +66,23 @@ def _assert_run_shape(run: dict) -> None:
         assert "category" in row
         assert isinstance(row["category"], str)
         assert row["category"]
+
+
+def _assert_count_triplet(block: dict, *, counts_key: str | None = "counts") -> None:
+    assert "num_cases" in block
+    assert "scored_cases" in block
+    assert "passed" in block
+    num_cases = int(block["num_cases"])
+    scored_cases = int(block["scored_cases"])
+    passed = int(block["passed"])
+    assert num_cases >= scored_cases >= passed >= 0
+
+    if counts_key and counts_key in block:
+        counts = block[counts_key]
+        assert isinstance(counts, dict)
+        assert int(counts["num_cases"]) == num_cases
+        assert int(counts["scored_cases"]) == scored_cases
+        assert int(counts["passed"]) == passed
 
 
 def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(tmp_path, monkeypatch) -> None:
@@ -91,9 +106,7 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
 
     assert payload_1["suite"] == "pr5_eval_matrix"
     assert payload_1["schema_version"] == "1.1"
-    assert payload_1["num_cases"] == payload_1["counts"]["num_cases"]
-    assert payload_1["scored_cases"] == payload_1["counts"]["scored_cases"]
-    assert payload_1["passed"] == payload_1["counts"]["passed"]
+    _assert_count_triplet(payload_1)
     assert isinstance(payload_1["pass_rate"], float)
     assert payload_1["counts"]["num_runs"] == len(payload_1["matrix"]["runs"])
     assert payload_1["counts"]["num_cases"] >= payload_1["counts"]["scored_cases"] >= payload_1["counts"]["passed"] >= 0
@@ -108,6 +121,10 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
 
     for run in matrix["runs"]:
         _assert_run_shape(run)
+        for category_block in run["category_summary"].values():
+            _assert_count_triplet(category_block, counts_key=None)
+        for deterministic_block in run["deterministic_checks"].values():
+            _assert_count_triplet(deterministic_block, counts_key=None)
 
     assert REQUIRED_CONFIG_IDS.issubset(set(matrix["config_ids"]))
     expected_case_count = len(CORE_EVAL_CASES)
@@ -139,6 +156,7 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
     assert summary["counts"]["num_runs"] == len(matrix["runs"])
     for key in ("baseline_single", "swarm", "dual_gated", "tool_first", "memory", "sfc"):
         block = summary[key]
+        _assert_count_triplet(block, counts_key=None)
         assert block["num_cases"] >= 0
         assert block["scored_cases"] >= 0
         assert block["passed"] >= 0
@@ -172,10 +190,11 @@ def test_pr5_eval_matrix_script_emits_deterministic_schema_and_required_deltas(t
 
     assert compat_tool_1["suite"] == "pr1_tool_first"
     assert compat_tool_1["schema_version"] == "1.1"
-    assert compat_tool_1["num_cases"] == compat_tool_1["counts"]["num_cases"]
-    assert compat_tool_1["scored_cases"] == compat_tool_1["counts"]["scored_cases"]
-    assert compat_tool_1["passed"] == compat_tool_1["counts"]["passed"]
+    _assert_count_triplet(compat_tool_1)
     assert isinstance(compat_tool_1["pass_rate"], float)
     assert compat_tool_1["summary"]["counts"] == compat_tool_1["counts"]
+    _assert_count_triplet(compat_tool_1["overall"], counts_key=None)
+    _assert_count_triplet(compat_tool_1["math"], counts_key=None)
+    _assert_count_triplet(compat_tool_1["code"], counts_key=None)
     assert compat_tool_1["overall"]["num_cases"] >= compat_tool_1["overall"]["passed"] >= 0
     assert compat_tool_1["overall"]["scored_cases"] == compat_tool_1["overall"]["num_cases"]
