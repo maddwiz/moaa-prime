@@ -1,0 +1,295 @@
+{
+  "require_clean_worktree": true,
+  "required_files": [
+    "README.md",
+    "ROADMAP.md",
+    "CONTRACTS.md",
+    "scripts/eval_matrix.py",
+    "scripts/eval_tough_bench.py",
+    "scripts/eval_stability.py",
+    "scripts/eval_calibration.py",
+    "scripts/tune_production.py",
+    "scripts/eval_blind_holdout.py",
+    "scripts/audit_data_leakage.py",
+    "scripts/eval_redteam.py",
+    "scripts/eval_shadow_prod.py",
+    "datasets/benchmark_train.jsonl",
+    "datasets/benchmark_holdout_locked.jsonl",
+    "datasets/benchmark_redteam.jsonl",
+    "datasets/benchmark_shadow_prod.jsonl",
+    "tests/test_prod_blind_holdout.py",
+    "tests/test_prod_leakage_audit.py",
+    "tests/test_prod_redteam.py",
+    "tests/test_prod_shadow_eval.py",
+    "reports/eval_matrix.json",
+    "reports/tough_bench.json",
+    "reports/stability.json",
+    "reports/calibration.json",
+    "reports/tuning_report.json",
+    "reports/load_smoke_long.json",
+    "reports/blind_holdout.json",
+    "reports/leakage_audit.json",
+    "reports/redteam_eval.json",
+    "reports/shadow_prod_eval.json",
+    ".github/workflows/nightly-bench.yml"
+  ],
+  "file_checks": [
+    {
+      "name": "nightly_has_new_gates",
+      "file": ".github/workflows/nightly-bench.yml",
+      "min_bytes": 400,
+      "contains": [
+        "eval_blind_holdout.py",
+        "audit_data_leakage.py",
+        "eval_redteam.py",
+        "eval_shadow_prod.py"
+      ]
+    },
+    {
+      "name": "holdout_dataset_shape",
+      "file": "datasets/benchmark_holdout_locked.jsonl",
+      "min_bytes": 12000,
+      "contains": [
+        "\"case_id\"",
+        "\"prompt\"",
+        "\"split\": \"holdout_locked\""
+      ]
+    },
+    {
+      "name": "redteam_dataset_shape",
+      "file": "datasets/benchmark_redteam.jsonl",
+      "min_bytes": 12000,
+      "contains": [
+        "\"attack_family\"",
+        "prompt_injection",
+        "schema_drift"
+      ]
+    },
+    {
+      "name": "shadow_dataset_shape",
+      "file": "datasets/benchmark_shadow_prod.jsonl",
+      "min_bytes": 8000,
+      "contains": [
+        "\"case_id\"",
+        "\"traffic_slice\"",
+        "\"prompt\""
+      ]
+    },
+    {
+      "name": "leakage_audit_script_contract",
+      "file": "scripts/audit_data_leakage.py",
+      "min_bytes": 1200,
+      "contains": [
+        "max_exact_overlap",
+        "max_near_overlap",
+        "schema_version"
+      ]
+    }
+  ],
+  "command_checks": [
+    {
+      "name": "pytest_green",
+      "cmd": "if [ -x .venv/bin/pytest ]; then .venv/bin/pytest -q; else pytest -q; fi",
+      "timeout_sec": 2400
+    },
+    {
+      "name": "tune_production",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/tune_production.py --output reports/tuning_report.json; else python scripts/tune_production.py --output reports/tuning_report.json; fi",
+      "timeout_sec": 2400
+    },
+    {
+      "name": "eval_matrix",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_matrix.py; else python scripts/eval_matrix.py; fi",
+      "timeout_sec": 3000
+    },
+    {
+      "name": "eval_tough_bench",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_tough_bench.py --output reports/tough_bench.json; else python scripts/eval_tough_bench.py --output reports/tough_bench.json; fi",
+      "timeout_sec": 3000
+    },
+    {
+      "name": "eval_stability_20",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_stability.py --output reports/stability.json --seeds 20; else python scripts/eval_stability.py --output reports/stability.json --seeds 20; fi",
+      "timeout_sec": 3600
+    },
+    {
+      "name": "eval_calibration",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_calibration.py --output reports/calibration.json; else python scripts/eval_calibration.py --output reports/calibration.json; fi",
+      "timeout_sec": 3000
+    },
+    {
+      "name": "load_smoke_long_1500",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1500; else python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1500; fi",
+      "timeout_sec": 3600
+    },
+    {
+      "name": "eval_blind_holdout",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_blind_holdout.py --output reports/blind_holdout.json; else python scripts/eval_blind_holdout.py --output reports/blind_holdout.json; fi",
+      "timeout_sec": 3600
+    },
+    {
+      "name": "leakage_audit",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/audit_data_leakage.py --output reports/leakage_audit.json; else python scripts/audit_data_leakage.py --output reports/leakage_audit.json; fi",
+      "timeout_sec": 1200
+    },
+    {
+      "name": "eval_redteam",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_redteam.py --output reports/redteam_eval.json; else python scripts/eval_redteam.py --output reports/redteam_eval.json; fi",
+      "timeout_sec": 3600
+    },
+    {
+      "name": "eval_shadow_prod",
+      "cmd": "if [ -x .venv/bin/python ]; then .venv/bin/python scripts/eval_shadow_prod.py --output reports/shadow_prod_eval.json; else python scripts/eval_shadow_prod.py --output reports/shadow_prod_eval.json; fi",
+      "timeout_sec": 3600
+    }
+  ],
+  "checks": [
+    {
+      "name": "eval_matrix_case_volume",
+      "file": "reports/eval_matrix.json",
+      "path": "summary.counts.num_cases",
+      "op": "ge",
+      "value": 2500
+    },
+    {
+      "name": "tough_bench_case_volume",
+      "file": "reports/tough_bench.json",
+      "path": "counts.num_cases",
+      "op": "ge",
+      "value": 500
+    },
+    {
+      "name": "tough_bench_worst_split_floor",
+      "file": "reports/tough_bench.json",
+      "path": "summary.metrics.worst_split_pass_rate",
+      "op": "ge",
+      "value": 0.72
+    },
+    {
+      "name": "stability_seed_count",
+      "file": "reports/stability.json",
+      "path": "summary.metrics.seed_count",
+      "op": "ge",
+      "value": 20
+    },
+    {
+      "name": "stability_pass_rate_stddev",
+      "file": "reports/stability.json",
+      "path": "summary.metrics.pass_rate_stddev",
+      "op": "le",
+      "value": 0.01
+    },
+    {
+      "name": "calibration_ece",
+      "file": "reports/calibration.json",
+      "path": "summary.metrics.ece",
+      "op": "le",
+      "value": 0.12
+    },
+    {
+      "name": "calibration_brier",
+      "file": "reports/calibration.json",
+      "path": "summary.metrics.brier_score",
+      "op": "le",
+      "value": 0.12
+    },
+    {
+      "name": "load_request_count",
+      "file": "reports/load_smoke_long.json",
+      "path": "summary.metrics.request_count",
+      "op": "ge",
+      "value": 1500
+    },
+    {
+      "name": "load_error_rate",
+      "file": "reports/load_smoke_long.json",
+      "path": "summary.metrics.error_rate",
+      "op": "le",
+      "value": 0.005
+    },
+    {
+      "name": "load_p95_latency",
+      "file": "reports/load_smoke_long.json",
+      "path": "summary.metrics.p95_latency_ms",
+      "op": "le",
+      "value": 250.0
+    },
+    {
+      "name": "blind_holdout_cases",
+      "file": "reports/blind_holdout.json",
+      "path": "summary.counts.num_cases",
+      "op": "ge",
+      "value": 250
+    },
+    {
+      "name": "blind_holdout_pass_rate",
+      "file": "reports/blind_holdout.json",
+      "path": "summary.metrics.pass_rate",
+      "op": "ge",
+      "value": 0.72
+    },
+    {
+      "name": "blind_holdout_worst_category",
+      "file": "reports/blind_holdout.json",
+      "path": "summary.metrics.worst_category_pass_rate",
+      "op": "ge",
+      "value": 0.6
+    },
+    {
+      "name": "leakage_exact_overlap",
+      "file": "reports/leakage_audit.json",
+      "path": "summary.metrics.max_exact_overlap",
+      "op": "le",
+      "value": 0.01
+    },
+    {
+      "name": "leakage_near_overlap",
+      "file": "reports/leakage_audit.json",
+      "path": "summary.metrics.max_near_overlap",
+      "op": "le",
+      "value": 0.03
+    },
+    {
+      "name": "redteam_cases",
+      "file": "reports/redteam_eval.json",
+      "path": "summary.counts.num_cases",
+      "op": "ge",
+      "value": 250
+    },
+    {
+      "name": "redteam_pass_rate",
+      "file": "reports/redteam_eval.json",
+      "path": "summary.metrics.pass_rate",
+      "op": "ge",
+      "value": 0.65
+    },
+    {
+      "name": "redteam_worst_family",
+      "file": "reports/redteam_eval.json",
+      "path": "summary.metrics.worst_attack_family_pass_rate",
+      "op": "ge",
+      "value": 0.5
+    },
+    {
+      "name": "shadow_cases",
+      "file": "reports/shadow_prod_eval.json",
+      "path": "summary.counts.num_cases",
+      "op": "ge",
+      "value": 150
+    },
+    {
+      "name": "shadow_delta_vs_baseline",
+      "file": "reports/shadow_prod_eval.json",
+      "path": "summary.metrics.pass_rate_delta_vs_baseline",
+      "op": "ge",
+      "value": 0.02
+    },
+    {
+      "name": "shadow_worst_segment",
+      "file": "reports/shadow_prod_eval.json",
+      "path": "summary.metrics.worst_segment_pass_rate",
+      "op": "ge",
+      "value": 0.6
+    }
+  ]
+}
