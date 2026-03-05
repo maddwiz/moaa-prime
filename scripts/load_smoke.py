@@ -194,6 +194,11 @@ def main() -> int:
         },
         "metrics": metrics,
         "checks": checks,
+        "summary": {
+            "counts": counts,
+            "metrics": metrics,
+            "checks": checks,
+        },
         "samples": rows,
     }
 

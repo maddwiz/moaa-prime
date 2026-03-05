@@ -37,9 +37,13 @@ jobs:
           python scripts/eval_external_bench.py --output reports/external_bench.json
           python scripts/eval_tough_bench.py --output reports/tough_bench.json
           python scripts/tune_production.py --output reports/tuning_report.json
-          python scripts/eval_stability.py --output reports/stability.json --seeds 10
+          python scripts/eval_stability.py --output reports/stability.json --seeds 20
           python scripts/eval_calibration.py --output reports/calibration.json
-          python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1000
+          python scripts/load_smoke.py --output reports/load_smoke_long.json --iters 1500
+          python scripts/eval_blind_holdout.py --output reports/blind_holdout.json
+          python scripts/audit_data_leakage.py --output reports/leakage_audit.json
+          python scripts/eval_redteam.py --output reports/redteam_eval.json
+          python scripts/eval_shadow_prod.py --output reports/shadow_prod_eval.json
 
       - name: Upload reports
         uses: actions/upload-artifact@v4

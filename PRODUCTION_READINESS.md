@@ -9,7 +9,7 @@ The production control plane for this repository is:
 - Release workflow: `.github/workflows/release.yml`
 - Nightly benchmark workflow: `.github/workflows/nightly-bench.yml`
 - Runtime gates: `scripts/preflight_prod.py`, `scripts/load_smoke.py`
-- Quality gates: `scripts/eval_matrix.py`, `scripts/eval_router.py`, `scripts/eval_compare.py`, `scripts/eval_dual_gate.py`, `scripts/eval_external_bench.py`, `scripts/eval_tough_bench.py`, `scripts/tune_production.py`, `scripts/eval_stability.py`, `scripts/eval_calibration.py`
+- Quality gates: `scripts/eval_matrix.py`, `scripts/eval_router.py`, `scripts/eval_compare.py`, `scripts/eval_dual_gate.py`, `scripts/eval_external_bench.py`, `scripts/eval_tough_bench.py`, `scripts/tune_production.py`, `scripts/eval_stability.py`, `scripts/eval_calibration.py`, `scripts/eval_blind_holdout.py`, `scripts/audit_data_leakage.py`, `scripts/eval_redteam.py`, `scripts/eval_shadow_prod.py`
 
 ## Service Level Objectives (SLO)
 Primary SLO targets for release candidates:
@@ -38,16 +38,35 @@ Primary SLO targets for release candidates:
   - `counts.num_cases >= 250`
   - `metrics.pass_rate >= 0.80`
 - Tough benchmark remains healthy:
-  - `counts.num_cases >= 300`
+  - `counts.num_cases >= 500`
   - `metrics.pass_rate >= 0.75`
   - adversarial split pass-rate `>= 0.60`
   - OOD split pass-rate `>= 0.65`
+  - worst split pass-rate `>= 0.72`
   - worst-category pass-rate `>= 0.60`
 - Stability and calibration evidence remains healthy:
   - `stability.metrics.pass_rate_stddev <= 0.03`
   - `stability.metrics.oracle_score_stddev <= 0.05`
   - `calibration.metrics.ece <= 0.12`
   - `calibration.metrics.brier_score <= 0.25`
+- Blind holdout quality remains healthy:
+  - `summary.counts.num_cases >= 250`
+  - `summary.metrics.pass_rate >= 0.72`
+  - `summary.metrics.worst_category_pass_rate >= 0.60`
+- Leakage budget remains healthy:
+  - `summary.metrics.max_exact_overlap <= 0.01`
+  - `summary.metrics.max_near_overlap <= 0.03`
+- Red-team stress remains healthy:
+  - `summary.counts.num_cases >= 250`
+  - `summary.metrics.pass_rate >= 0.65`
+  - `summary.metrics.worst_attack_family_pass_rate >= 0.50`
+- Shadow production benchmark remains healthy:
+  - `summary.counts.num_cases >= 150`
+  - `summary.metrics.pass_rate_delta_vs_baseline >= 0.02`
+  - `summary.metrics.worst_segment_pass_rate >= 0.60`
+- Final tuning gate must remain worst-case first (not mean-only):
+  - `final_gate_policy = worst_case_v1`
+  - `selection_policy = worst_case_priority_then_objective`
 
 ## Availability and Recovery Targets
 - RTO: 30 minutes for production rollback to last known-good release.
@@ -118,6 +137,10 @@ Required evidence per release:
 - `reports/tuning_report.json`
 - `reports/stability.json`
 - `reports/calibration.json`
+- `reports/blind_holdout.json`
+- `reports/leakage_audit.json`
+- `reports/redteam_eval.json`
+- `reports/shadow_prod_eval.json`
 - `reports/preflight_prod.json`
 - `reports/load_smoke.json`
 - `reports/load_smoke_long.json`

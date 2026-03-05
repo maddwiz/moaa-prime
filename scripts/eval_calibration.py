@@ -143,6 +143,11 @@ def main() -> int:
         "pass_rate": float(summary["metrics"]["pass_rate"]),
         "metrics": metrics,
         "checks": checks,
+        "summary": {
+            "counts": counts,
+            "metrics": metrics,
+            "checks": checks,
+        },
         "bins": bins,
         "skipped_non_target_splits": int(skipped),
         "invalid_rows": int(len(errors)),

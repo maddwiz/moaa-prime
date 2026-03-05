@@ -5,7 +5,7 @@ import json
 import itertools
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 # Allow running this script from a repo checkout without requiring pip install -e .
 _SRC_DIR = Path(__file__).resolve().parents[1] / "src"
@@ -48,6 +48,13 @@ def _category_counts(cases: list[Any]) -> dict[str, int]:
     for row in cases:
         out[row.category] = out.get(row.category, 0) + 1
     return out
+
+
+def _safe_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def _dual_fit(dual_cfg: dict[str, float]) -> float:
@@ -137,11 +144,32 @@ def _evaluate_config(config: dict[str, Any], *, split_counts: dict[str, int], ca
         "overall_pass_rate_floor": bool(overall_pass_rate >= 0.75),
         "adversarial_floor": bool(by_split.get("adversarial", 0.0) >= 0.60),
         "ood_floor": bool(by_split.get("ood", 0.0) >= 0.65),
+        "worst_split_floor": bool(worst_split_pass_rate >= 0.60),
         "worst_category_floor": bool(worst_category_pass_rate >= 0.60),
         "error_rate_budget": bool(error_rate <= 0.01),
         "p95_latency_budget": bool(latency_ms <= 2500.0),
         "stability_budget": bool(stability_stddev <= 0.05),
     }
+
+    final_gate = {
+        "gate_version": "worst_case_v1",
+        "selection_priority": [
+            "worst_split_pass_rate",
+            "worst_category_pass_rate",
+            "overall_pass_rate",
+            "latency_p95_ms",
+            "stability_stddev",
+        ],
+        "checks": {
+            "overall_pass_rate_floor": bool(overall_pass_rate >= 0.75),
+            "worst_split_floor": bool(worst_split_pass_rate >= 0.60),
+            "worst_category_floor": bool(worst_category_pass_rate >= 0.60),
+            "error_rate_budget": bool(error_rate <= 0.01),
+            "p95_latency_budget": bool(latency_ms <= 2500.0),
+            "stability_budget": bool(stability_stddev <= 0.05),
+        },
+    }
+    final_gate["passed"] = bool(all((final_gate.get("checks") or {}).values()))
 
     total_cases = int(sum(split_counts.values()))
     passed_cases = int(round(overall_pass_rate * total_cases))
@@ -181,7 +209,8 @@ def _evaluate_config(config: dict[str, Any], *, split_counts: dict[str, int], ca
         },
         "objective_score": objective_score,
         "checks": checks,
-        "safe": bool(all(checks.values())),
+        "final_gate": final_gate,
+        "safe": bool(final_gate["passed"]),
     }
 
 
@@ -254,10 +283,25 @@ def _candidate_configs() -> list[dict[str, Any]]:
     return configs
 
 
+def _safe_selection_key(row: Mapping[str, Any]) -> tuple[float, float, float, float, float, float, str]:
+    metrics = row.get("metrics")
+    metrics_map = metrics if isinstance(metrics, Mapping) else {}
+    return (
+        -_safe_float(metrics_map.get("worst_split_pass_rate"), default=0.0),
+        -_safe_float(metrics_map.get("worst_category_pass_rate"), default=0.0),
+        -_safe_float(metrics_map.get("pass_rate"), default=0.0),
+        _safe_float(metrics_map.get("latency_p95_ms"), default=0.0),
+        _safe_float(metrics_map.get("stability_stddev"), default=0.0),
+        -_safe_float(row.get("objective_score"), default=0.0),
+        str(row.get("config_id", "")),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Search safe production configs over routing/swarm/dual-gate knobs.")
     parser.add_argument("--dataset", default="datasets/tough_benchmarks.jsonl")
     parser.add_argument("--output", default="reports/tuning_report.json")
+    parser.add_argument("--seed", type=int, default=20260305)
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -289,6 +333,7 @@ def main() -> int:
                 "counts": evaluated["counts"],
                 "metrics": evaluated["metrics"],
                 "checks": evaluated["checks"],
+                "final_gate": evaluated["final_gate"],
                 "safe": bool(evaluated["safe"]),
                 "objective_score": float(evaluated["objective_score"]),
             }
@@ -299,7 +344,8 @@ def main() -> int:
         row["rank"] = int(idx)
 
     safe_rows = [row for row in explored if bool(row.get("safe", False))]
-    best = dict(safe_rows[0] if safe_rows else explored[0]) if explored else {
+    safe_rows_sorted = sorted(safe_rows, key=_safe_selection_key)
+    best = dict(safe_rows_sorted[0] if safe_rows_sorted else explored[0]) if explored else {
         "config_id": "",
         "config": {},
         "counts": {"num_cases": 0, "scored_cases": 0, "passed": 0},
@@ -333,12 +379,23 @@ def main() -> int:
         "tuning_report": {
             "objective_priority": ["pass_rate", "latency", "stability"],
             "objective_formula": "pass_rate*1000 - latency_p95_ms*0.08 - stability_stddev*400 - error_rate*300",
+            "final_gate_policy": "worst_case_v1",
+            "selection_policy": "worst_case_priority_then_objective",
+            "final_gate_requires": [
+                "overall_pass_rate_floor",
+                "worst_split_floor",
+                "worst_category_floor",
+                "error_rate_budget",
+                "p95_latency_budget",
+                "stability_budget",
+            ],
         },
         "dataset": {
             "path": str(dataset_path),
             "splits": list(ALLOWED_SPLITS),
             "num_cases": int(sum(split_counts.values())),
         },
+        "seed": int(args.seed),
         "search_space": {
             "routing_confidence_floor": [0.60, 0.66, 0.72],
             "swarm_rounds": [1, 2],
@@ -361,6 +418,7 @@ def main() -> int:
             "counts": baseline_eval["counts"],
             "metrics": baseline_eval["metrics"],
             "checks": baseline_eval["checks"],
+            "final_gate": baseline_eval["final_gate"],
             "objective_score": baseline_score,
         },
         "best_config": {
@@ -369,6 +427,7 @@ def main() -> int:
             "counts": best_counts,
             "metrics": best_metrics,
             "checks": best.get("checks", {}),
+            "final_gate": best.get("final_gate", {}),
             "safe": bool(best.get("safe", False)),
             "objective_score": best_score,
             "objective_gain_vs_baseline": float(best_score - baseline_score),
@@ -390,6 +449,7 @@ def main() -> int:
             "invalid_rows": int(len(errors)),
             "skipped_non_target_splits": int(skipped),
             "safe_candidate_count": int(len(safe_rows)),
+            "selected_from_safe_count": int(len(safe_rows_sorted)),
         },
     }
 

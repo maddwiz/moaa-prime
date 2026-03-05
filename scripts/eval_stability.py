@@ -146,6 +146,11 @@ def main() -> int:
         "pass_rate": float(metrics["pass_rate_mean"]),
         "metrics": metrics,
         "checks": checks,
+        "summary": {
+            "counts": counts,
+            "metrics": metrics,
+            "checks": checks,
+        },
         "skipped_non_target_splits": int(skipped),
         "invalid_rows": int(len(errors)),
         "per_seed": per_seed,

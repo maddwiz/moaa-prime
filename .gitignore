@@ -38,6 +38,10 @@ checkpoints/
 datasets/*
 !datasets/external_benchmarks.jsonl
 !datasets/tough_benchmarks.jsonl
+!datasets/benchmark_train.jsonl
+!datasets/benchmark_holdout_locked.jsonl
+!datasets/benchmark_redteam.jsonl
+!datasets/benchmark_shadow_prod.jsonl
 
 # Generated demo outputs
 reports/
